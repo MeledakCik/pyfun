@@ -1,0 +1,7 @@
+node_modules
+.next
+.cache
+.env
+.env.*
+docs.zip
+*.tsbuildinfo
