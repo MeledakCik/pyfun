@@ -28,10 +28,11 @@ Tidak ada script test. `lint` adalah typecheck; jangan mengarang `npm test`.
 - `app/play/[id]/page.tsx` — pemain quest layar penuh; menangani quiz, prediksi output, eksekusi kode, debug dengan test case, petunjuk bertingkat, dan XP.
 - `app/api/admin/` — `sync` untuk menyimpan materi ke Supabase dan `seed` untuk materi AI opsional; `app/api/generate/` untuk generate satu materi. Endpoint admin memakai header `x-admin-secret`.
 - `app/api/lessons/` — endpoint publik: `docs` menyusun materi bacaan dari `docs.python.org/id/3/` tanpa AI, `generate` membuat draft AI dengan kuota harian Supabase (cadangan jika docs gagal), `suggest` mengembalikan lima topik dari katalog. `generate` menerima `repair` opsional untuk draft yang gagal dites dan tidak menulis ke `pyfun_lessons`.
+- `app/api/ranks/` — `GET` papan peringkat dan `POST` sinkron nama/penyelesaian materi. Client tidak pernah mengirim XP; route menghitung XP dari katalog resmi dan memakai service role. Jangan menambahkan seed/NPC ke tabel rank.
 - `components/` — `Shell`, `Editor`, `Rich`, `QuestTrack`, `GenerateLesson`, `ui`.
 - `lib/lessons.ts` — 25 quest inti (`BUNDLED`), materi buatan user, dan penggabungan materi Supabase; `lib/bonus.ts` — 15 materi bonus terkurasi dan urutan track; `lib/types.ts` — schema materi.
-- `lib/store.ts` — state localStorage termasuk `generated`; `lib/python.ts` — runner Pyodide dan validasi solusi; `lib/supabase*.ts` — client publik/admin; `lib/admin-auth.ts` dan `lib/rate-limit.ts` — keamanan endpoint.
-- `supabase/schema.sql` — DDL, migrasi, dan RLS; `docs/seed-materi.md` — alur sync; `SECURITY.md` — checklist keamanan.
+- `lib/store.ts` — state localStorage termasuk `generated`; `lib/rank.ts` — identitas perangkat dan client `/api/ranks`; `lib/python.ts` — runner Pyodide dan validasi solusi; `lib/supabase*.ts` — client publik/admin; `lib/admin-auth.ts` dan `lib/rate-limit.ts` — keamanan endpoint.
+- `supabase/schema.sql` — DDL, migrasi, RLS materi, dan tabel/fungsi rank; `docs/seed-materi.md` — alur sync; `SECURITY.md` — checklist keamanan.
 
 ## Format materi
 

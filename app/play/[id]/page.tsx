@@ -7,6 +7,7 @@ import { Bar, Confetti, Icon } from "@/components/ui";
 import { CodeBlock, Rich } from "@/components/Rich";
 import { Editor, Output, RunButton } from "@/components/Editor";
 import { actions, useGame } from "@/lib/store";
+import { submitRankCompletion } from "@/lib/rank";
 import { findLesson, fetchSupabaseLessons, isUnlocked } from "@/lib/lessons";
 import { BADGES } from "@/lib/game";
 import { checkCode, runPython, warmUp, type RunResult } from "@/lib/python";
@@ -97,6 +98,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     if (!finished.current) {
       finished.current = true;
       setSummary(actions.complete(lesson, mistakes));
+      if (lesson.source === "bundled" || lesson.source === "supabase" || lesson.source === "catalog") {
+        void submitRankCompletion(lesson.id, g.name).catch(() => {});
+      }
     }
     setPhase("done");
   };

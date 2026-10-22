@@ -32,6 +32,7 @@ app/
   api/lessons/docs/     materi bacaan dari dokumentasi resmi Python (tanpa AI)
   api/lessons/generate/ draft materi AI untuk user (kuota Supabase, tanpa tulis materi)
   api/lessons/suggest/  lima saran topik dari daftar id materi selesai
+  api/ranks/            papan peringkat global (server-only, service role)
 components/             Shell, Editor, Rich, ui
 lib/
   lessons.ts            materi inti + merge materi bonus dari Supabase/katalog
@@ -39,10 +40,11 @@ lib/
   supabase.ts           client Supabase publik (anon, hanya baca)
   supabase-admin.ts     client service role khusus server
   ai.ts                 generate materi via Groq (server-only)
+  rank.ts               identitas perangkat + client /api/ranks
   store.ts              state + localStorage
   game.ts               XP, level, rank, lencana
   python.ts             runner Pyodide
-supabase/schema.sql     DDL + migrasi + RLS tabel pyfun_lessons
+supabase/schema.sql     DDL + migrasi + RLS materi & tabel rank
 docs/seed-materi.md     cara sync materi & checklist keamanan
 ```
 
@@ -62,6 +64,29 @@ curl -X POST http://localhost:3000/api/admin/sync \
 Materi inti tetap dibundel sebagai fallback, tetapi salinannya juga tersimpan di Supabase dengan `kind = 'core'`. Materi bonus memakai `kind = 'bonus'`, `track`, dan `sort_order` agar tampil berurutan per jalur.
 
 Mau menambah materi AI? Jalankan `/api/admin/seed` setelah sync. Detail lengkap ada di `docs/seed-materi.md`.
+
+## Papan peringkat
+
+Halaman `/ranks` membaca data asli dari Supabase lewat `/api/ranks`. Tidak ada
+NPC atau data dummy yang di-seed ke database. Pemain masuk papan setelah
+menyelesaikan materi resmi.
+
+- Identitas rank adalah UUID + secret acak yang dibuat di browser
+  (`lib/rank.ts`); secret tidak pernah ditampilkan dan hanya dikirim ke route
+  server.
+- Client hanya mengirim satu ID materi, bukan XP. Server menghitung XP dari
+  `BUNDLED` + materi bonus resmi, jadi angka rank tidak bisa di-inject dari
+  browser. Progres lokal yang bisa diedit lewat localStorage tidak disinkronkan
+  borongan; rank hanya bertambah saat materi diselesaikan.
+- Baris rank baru dibuat saat materi resmi pertama diselesaikan. Sekadar membuka
+  halaman rank atau mengisi nama tidak membuat baris 0 XP.
+- Materi buatan sendiri (`gen-...`) dan pengulangan materi tidak menambah XP
+  rank. Tabel completion memakai primary key `(player_id, lesson_id)`.
+- Tabel `pyfun_rank_players` dan `pyfun_rank_completions` hanya bisa diakses
+  `service_role`; `anon`/`authenticated` tidak punya policy. Jalankan
+  `supabase/schema.sql` untuk membuat tabel dan fungsi rank.
+- Tanpa login, anti-cheat bersifat perangkat. Untuk proteksi lebih kuat,
+  tambahkan Supabase Auth dan verifikasi percobaan di server.
 
 ## Endpoint materi publik
 

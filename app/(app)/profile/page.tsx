@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import { Bar, Icon } from "@/components/ui";
 import { actions, useGame } from "@/lib/store";
+import { syncRank } from "@/lib/rank";
 import { BADGES, dayKey, levelOf, nextRank, rankOf } from "@/lib/game";
 import { BUNDLED } from "@/lib/lessons";
 
@@ -38,7 +39,13 @@ export default function Profile() {
       <div className="flex items-center gap-4">
         <span className="grid h-20 w-20 place-items-center rounded-3xl bg-lime font-display text-4xl font-bold text-lime-ink">{(g.name ?? "?")[0].toUpperCase()}</span>
         <div className="min-w-0">
-          <input aria-label="Nama" defaultValue={g.name ?? ""} maxLength={20} onBlur={(e) => actions.rename(e.target.value)}
+          <input aria-label="Nama" defaultValue={g.name ?? ""} maxLength={20} onBlur={(e) => {
+            const nextName = e.target.value.trim() || g.name || "Pelajar";
+            actions.rename(nextName);
+            if (nextName !== g.name) {
+              void syncRank(nextName, []).catch(() => {});
+            }
+          }}
             className="w-full rounded-lg bg-transparent font-display text-3xl font-bold outline-none focus:bg-surface" />
           <p className="text-dim">Level {lv.level} · <span style={{ color: rank.color }}>{rank.name}</span></p>
         </div>

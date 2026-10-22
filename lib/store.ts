@@ -150,7 +150,7 @@ export function useGame() {
 
 export const actions = {
   start(name: string) {
-    commit({ ...state, name: name.trim() || "Cadet", joinedAt: state.joinedAt || Date.now() });
+    commit({ ...state, name: name.trim() || "Pelajar", joinedAt: state.joinedAt || Date.now() });
   },
   rename(name: string) {
     commit({ ...state, name: name.trim() || state.name });

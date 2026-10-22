@@ -36,9 +36,17 @@ Semuanya berada di `localStorage` browser (`pyfun:v1`). Karena itu:
 - jika nanti ditambah login, gunakan Supabase Auth (bukan menyimpan password
   sendiri) dan aktifkan RLS berbasis `auth.uid()`.
 
+Identitas papan peringkat bersifat **perangkat**, bukan akun: `lib/rank.ts`
+membuat UUID publik + secret acak 32 byte di localStorage. Secret hanya dikirim
+ke `/api/ranks`; server menyimpan SHA-256-nya di `pyfun_rank_players`. XP rank
+tidak pernah dikirim client—server menghitungnya dari ID materi resmi. Tanpa
+login, ini mencegah injeksi angka/XP dan penimpaan pemain lain, tetapi belum
+mencegah orang membuat banyak identitas baru. Untuk anti-cheat yang lebih kuat,
+tambahkan Supabase Auth dan verifikasi percobaan di server.
+
 ## 3. Database
 
-`supabase/schema.sql` melakukan:
+Untuk tabel materi `pyfun_lessons`, `supabase/schema.sql` melakukan:
 
 - `enable row level security`,
 - policy `SELECT` publik,
@@ -46,8 +54,19 @@ Semuanya berada di `localStorage` browser (`pyfun:v1`). Karena itu:
   `anon` dan `authenticated`,
 - `grant select` saja.
 
-Artinya browser hanya bisa membaca. Semua penulisan harus lewat route server
-dengan service role.
+Artinya browser hanya bisa membaca materi. Semua penulisan materi harus lewat
+route server dengan service role.
+
+Tabel rank (`pyfun_rank_players`, `pyfun_rank_completions`) lebih ketat:
+
+- RLS aktif **tanpa policy publik**,
+- `revoke all` dari `public`, `anon`, dan `authenticated`,
+- hanya `service_role` yang boleh baca/tulis,
+- fungsi `pyfun_rank_board` dan `pyfun_rank_sync` juga hanya boleh dieksekusi
+  `service_role`.
+
+Jangan menambahkan seed data dummy/NPC ke tabel rank. Baris rank hanya dibuat
+saat pemain asli menyelesaikan materi resmi.
 
 ## 4. Endpoint admin
 
@@ -65,6 +84,21 @@ tanpa biaya AI.
 Endpoint publik `/api/lessons/docs` tidak menerima URL dari client. Halaman
 hanya diambil dari whitelist `docs.python.org/id/3/` dan `docs.python.org/3/`,
 dengan batas ukuran body dan rate limit per IP.
+
+### Papan peringkat `/api/ranks`
+
+- `GET` hanya mengembalikan nama, XP, posisi, dan total; tidak pernah
+  mengembalikan secret/hash.
+- `POST` memvalidasi UUID pemain, secret 64 hex, nama 1–20 karakter, dan satu
+  ID materi. Nama disanitasi ke huruf/angka/spasi/titik/garis bawah/strip.
+- Client **tidak boleh** mengirim XP. Route mencari XP dari `BUNDLED` dan
+  materi bonus resmi, lalu mengabaikan ID materi buatan sendiri/tidak dikenal.
+- Tabel completion memakai primary key `(player_id, lesson_id)`, jadi kiriman
+  ulang tidak menambah XP rank.
+- Secret di-hash SHA-256 sebelum masuk database; fungsi database membandingkan
+  hash sehingga pemain lain tidak bisa mengganti nama/XP tanpa secret.
+- Rate limit per IP, batas body 64 KB, dan tidak ada penulisan langsung dari
+  browser ke tabel rank.
 
 ## 5. Header & browser
 
