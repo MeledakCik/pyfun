@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Compass, Terminal, Trophy, User } from "lucide-react";
-import { actions, useGame } from "@/lib/store";
+import { useGame } from "@/lib/store";
 import { rankOf } from "@/lib/game";
 import { Logo, Stats } from "./ui";
 import SideRail from "./SideRail";
@@ -23,11 +23,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (ready && !g.name) router.replace("/");
   }, [ready, g.name, router]);
-
-  useEffect(() => {
-    const t = setInterval(actions.tickHearts, 30000);
-    return () => clearInterval(t);
-  }, []);
 
   if (!ready || !g.name) return <div className="min-h-dvh" />;
   const rank = rankOf(g.xp);
@@ -56,7 +51,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between bg-bg/60 px-5 py-3.5 backdrop-blur-md md:justify-end">
           <Link href="/quest" className="md:hidden"><Logo /></Link>
-          <Stats streak={g.streak} xp={g.xp} hearts={g.hearts} />
+          <Stats streak={g.streak} xp={g.xp} />
         </header>
         {/* pb-24 mobile agar tidak tertutup bottom nav (64px nav + spacing) */}
         <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-24 pt-4 sm:px-5 md:pb-12">{children}</main>

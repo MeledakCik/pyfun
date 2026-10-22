@@ -2,25 +2,26 @@
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Flame, Heart, Lightbulb, X, Zap } from "lucide-react";
+import { Check, Flame, Lightbulb, X, Zap } from "lucide-react";
 import { Bar, Confetti, Icon } from "@/components/ui";
 import { CodeBlock, Rich } from "@/components/Rich";
 import { Editor, Output, RunButton } from "@/components/Editor";
 import { actions, useGame } from "@/lib/store";
 import { findLesson, fetchSupabaseLessons, isUnlocked } from "@/lib/lessons";
-import { BADGES, HEART_REGEN_MS } from "@/lib/game";
+import { BADGES } from "@/lib/game";
 import { checkCode, runPython, warmUp, type RunResult } from "@/lib/python";
-import type { CodeStep, Lesson, QuizStep } from "@/lib/types";
+import type { CodeStep, DebugStep, Lesson, PredictStep, QuizStep } from "@/lib/types";
 
 type Phase = "answer" | "right" | "wrong" | "done";
 type Summary = ReturnType<typeof actions.complete>;
+type TestResult = { label: string; pass: boolean; expected: string; got: string; error?: string };
 
 export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const { g, ready } = useGame();
   const [bonusLessons, setBonusLessons] = useState<Lesson[]>([]);
-  const lesson = ready ? findLesson(id, bonusLessons) : undefined;
+  const lesson = ready ? findLesson(id, bonusLessons, g.generated) : undefined;
 
   useEffect(() => {
     fetchSupabaseLessons().then(setBonusLessons);
@@ -28,26 +29,30 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
 
   const [idx, setIdx] = useState(0);
   const [mistakes, setMistakes] = useState(0);
-  const [stepFails, setStepFails] = useState(0);
   const [phase, setPhase] = useState<Phase>("answer");
   const [pick, setPick] = useState<number | null>(null);
   const [src, setSrc] = useState("");
+  const [guess, setGuess] = useState("");
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [res, setRes] = useState<RunResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const [hint, setHint] = useState(false);
+  const [hintLevel, setHintLevel] = useState(0);
   const [summary, setSummary] = useState<Summary | null>(null);
   const finished = useRef(false);
 
   const step = lesson?.steps[idx];
 
-  // siapkan editor saat masuk langkah kode
+  // siapkan editor dan tebakan saat masuk langkah baru
   useEffect(() => {
-    if (step?.type === "code") {
+    setGuess("");
+    setTestResults([]);
+    if (step?.type === "code" || step?.type === "debug") {
       setSrc(step.starter);
       warmUp();
     }
-    setPick(null); setRes(null); setNote(""); setHint(false); setStepFails(0); setPhase("answer");
+    if (step?.type === "predict") warmUp();
+    setPick(null); setRes(null); setNote(""); setHintLevel(0); setPhase("answer");
   }, [idx, step]);
 
   useEffect(() => {
@@ -64,25 +69,31 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     );
   }
 
-  const outOfHearts = g.hearts <= 0 && phase !== "done";
-  if (outOfHearts) {
-    const mins = Math.max(1, Math.ceil((g.heartsAt + HEART_REGEN_MS - Date.now()) / 60000));
-    return (
-      <Center>
-        <Heart size={56} className="text-danger" aria-hidden />
-        <h1 className="mt-4 text-3xl font-bold">Nyawa habis</h1>
-        <p className="mt-2 max-w-sm text-dim">Satu nyawa pulih tiap 15 menit (sekitar {mins} menit lagi). Sambil menunggu, latihan bebas di playground tidak memakai nyawa.</p>
-        <div className="mt-6 grid w-full max-w-xs gap-3">
-          <Link href="/playground" className="btn btn-lime">Buka playground</Link>
-          <Link href="/quest" className="btn btn-dark">Kembali ke peta</Link>
-        </div>
-      </Center>
-    );
-  }
+  // Dua tingkat petunjuk untuk latihan kode, predict, dan debug. Kalau materi
+  // belum punya hint2, susun petunjuk kedua dari chips atau strategi umum.
+  const stepHints =
+    step && (step.type === "code" || step.type === "predict" || step.type === "debug")
+      ? [
+          step.hint ||
+            (step.type === "predict"
+              ? "Baca kode dari atas ke bawah dan catat nilai setiap variabel."
+              : step.type === "debug"
+                ? "Jalankan kode, lalu bandingkan output dengan test case yang gagal."
+                : "Baca kembali prompt dan tentukan input, proses, serta output yang diminta."),
+          step.hint2 ||
+            (step.type === "code" && step.chips?.length
+              ? `Coba susun dari potongan ini: ${step.chips.join(" · ")}.`
+              : step.type === "predict"
+                ? "Perhatikan spasi dan baris baru; `print()` menambahkan baris baru di akhir output."
+                : step.type === "debug"
+                  ? "Periksa batas perulangan dan kondisi; ubah satu bagian lalu jalankan test lagi."
+                  : "Pecah masalah menjadi langkah kecil, lalu jalankan untuk memeriksa output tiap langkah."),
+        ]
+      : [];
 
   const total = lesson.steps.length;
   const next = () => {
-    if (idx + 1 < total) { setIdx(idx + 1); return; }
+    if (idx + 1 < total) { setHintLevel(0); setIdx(idx + 1); return; }
     if (!finished.current) {
       finished.current = true;
       setSummary(actions.complete(lesson, mistakes));
@@ -91,17 +102,22 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   };
 
   const wrong = (msg: string) => {
-    actions.loseHeart();
     setMistakes((m) => m + 1);
-    setStepFails((f) => f + 1);
     setNote(msg);
     setPhase("wrong");
   };
 
   const checkQuiz = (s: QuizStep) => {
     if (pick === null) return;
-    if (pick === s.answer) { setNote(s.explain); setPhase("right"); }
-    else wrong("Coba pilih jawaban lain.");
+    if (pick === s.answer) {
+      setNote(s.explain);
+      setPhase("right");
+      return;
+    }
+    const chosen = s.options[pick] ?? "Pilihan itu";
+    const correct = s.options[s.answer] ?? "opsi yang benar";
+    const reason = s.wrong?.[pick] || s.explain;
+    wrong(`Jawabanmu "${chosen}" belum tepat. ${reason} Jawaban yang benar: "${correct}".`);
   };
 
   const runOnly = async () => {
@@ -115,8 +131,64 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
     setBusy(false);
     const v = checkCode(s, src, r);
     if (v.pass) { setNote("Output sesuai. Kerja bagus!"); setPhase("right"); }
-    else if (!r.ok) { setNote(v.reason!); setPhase("wrong"); } // error sintaks/runtime tidak memakai nyawa
+    else if (!r.ok) { setNote(v.reason!); setPhase("wrong"); } // error sintaks/runtime tidak mengunci langkah
     else wrong(v.reason!);
+  };
+
+  const checkPredict = async (s: PredictStep) => {
+    setBusy(true);
+    const r = await runPython(s.code);
+    setRes(r);
+    setBusy(false);
+    if (!r.ok) {
+      setNote("Kode contoh gagal dijalankan. Coba lagi sebentar lagi.");
+      setPhase("wrong");
+      return;
+    }
+    const actual = r.out.trim();
+    const explain = s.explain ? ` ${s.explain}` : "";
+    if (guess.trim() === actual) {
+      setNote(`Tepat! Output sebenarnya ${JSON.stringify(actual)}.${explain}`);
+      setPhase("right");
+    } else {
+      wrong(`Tebakanmu ${JSON.stringify(guess.trim())} belum tepat. Output sebenarnya ${JSON.stringify(actual)}.${explain}`);
+    }
+  };
+
+  const checkDebugStep = async (s: DebugStep) => {
+    if (s.tests.length === 0) {
+      setNote("Belum ada test case untuk latihan ini.");
+      setPhase("wrong");
+      return;
+    }
+    setBusy(true);
+    setRes(null);
+    const results: TestResult[] = [];
+    for (const [i, test] of s.tests.entries()) {
+      const label = test.label ?? `Test ${i + 1}`;
+      const r = await runPython(`${src}\n\n${test.code}`);
+      const got = r.ok ? r.out.trim() : "";
+      results.push({
+        label,
+        pass: r.ok && got === test.expected.trim(),
+        expected: test.expected.trim(),
+        got,
+        error: r.ok ? undefined : r.error,
+      });
+      if (r.timedOut) break;
+    }
+    setTestResults(results);
+    setBusy(false);
+    const failed = results.find((r) => !r.pass);
+    if (!failed) {
+      setNote("Semua test lulus. Bug berhasil diperbaiki!");
+      setPhase("right");
+      return;
+    }
+    const detail = failed.error
+      ? `Test "${failed.label}" masih error. ${failed.error.split("\n")[0]}`
+      : `Test "${failed.label}" gagal. Diharapkan ${JSON.stringify(failed.expected)}, didapat ${JSON.stringify(failed.got)}.`;
+    wrong(detail);
   };
 
   /* ------- layar hasil ------- */
@@ -141,14 +213,25 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const isLearn = step?.type === "learn";
-  const canCheck = step?.type === "quiz" ? pick !== null : step?.type === "code" ? src.trim().length > 0 : true;
+  const canCheck =
+    step?.type === "quiz"
+      ? pick !== null
+      : step?.type === "code" || step?.type === "debug"
+        ? src.trim().length > 0
+        : step?.type === "predict"
+          ? guess.trim().length > 0
+          : true;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5">
       <header className="flex items-center gap-4 py-4">
         <Link href="/quest" aria-label="Keluar dari quest" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-raised text-dim hover:text-ink"><X size={20} /></Link>
         <Bar value={(idx / total) * 100} />
-        <span className="flex shrink-0 items-center gap-1.5 font-display font-bold"><Heart size={18} className="text-danger" fill="currentColor" aria-hidden />{g.hearts}</span>
+        <span
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-raised font-display text-lg font-bold text-lime"
+          title="Percobaan tanpa batas"
+          aria-label="Percobaan tanpa batas"
+        >∞</span>
       </header>
 
       <main className="flex-1 pb-44 pt-4">
@@ -194,19 +277,88 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
                 ))}
               </div>
             )}
-            <Editor value={src} onChange={setSrc} onRun={runOnly} onReset={() => { setSrc(step.starter); setRes(null); }} />
-            <div className="flex items-center gap-3">
-              <RunButton onClick={runOnly} busy={busy} />
-              {step.hint && (
-                <button onClick={() => setHint(true)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-dim hover:text-ink">
-                  <Lightbulb size={16} aria-hidden /> Petunjuk
-                </button>
-              )}
-              {step.solution && stepFails >= 2 && (
-                <button onClick={() => setSrc(step.solution!)} className="rounded-xl px-3 py-2 text-sm font-semibold text-dim hover:text-ink">Lihat jawaban</button>
-              )}
+            <Editor value={src} onChange={setSrc} onRun={runOnly} onReset={() => { setSrc(step.starter); setRes(null); setHintLevel(0); }} />
+            <Hints
+              leading={<RunButton onClick={runOnly} busy={busy} />}
+              hints={stepHints}
+              level={hintLevel}
+              onNext={() => setHintLevel((n) => Math.min(stepHints.length, n + 1))}
+              solution={step.solution}
+              onSolution={() => { setSrc(step.solution!); setRes(null); setHintLevel(stepHints.length + 1); }}
+            />
+            <Output text={res?.out ?? ""} error={res?.error} running={busy} idle={!res} />
+          </div>
+        )}
+
+        {step?.type === "predict" && (
+          <div className="grid gap-4">
+            <div className="card flex gap-4 p-5">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-raised text-lime"><Icon name="Sparkles" size={20} aria-hidden /></span>
+              <div className="grid gap-1 text-lg leading-snug"><Rich text={step.prompt} /></div>
             </div>
-            {hint && step.hint && <p className="rounded-2xl bg-raised p-4 text-sm"><b className="text-lime">Petunjuk:</b> {step.hint}</p>}
+            <CodeBlock code={step.code} />
+            <label className="grid gap-2 text-sm font-semibold text-dim">
+              Tebakan output
+              <textarea
+                value={guess}
+                onChange={(e) => setGuess(e.target.value)}
+                rows={4}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder="Tulis output persis seperti yang akan dicetak..."
+                className="scroll-thin w-full resize-y rounded-2xl border border-line bg-surface p-4 font-mono text-sm leading-6 text-ink caret-lime outline-none focus:border-lime"
+              />
+            </label>
+            <Hints
+              hints={stepHints}
+              level={hintLevel}
+              onNext={() => setHintLevel((n) => Math.min(stepHints.length, n + 1))}
+            />
+            {(busy || res) && <Output text={res?.out ?? ""} error={res?.error} running={busy} />}
+          </div>
+        )}
+
+        {step?.type === "debug" && (
+          <div className="grid gap-4">
+            <div className="card flex gap-4 p-5">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-raised text-lime"><Icon name="Wand2" size={20} aria-hidden /></span>
+              <div className="grid gap-1 text-lg leading-snug"><Rich text={step.prompt} /></div>
+            </div>
+            <div className="card p-4">
+              <p className="font-display text-sm font-bold text-dim">Test case</p>
+              <ul className="mt-2 grid gap-1 font-mono text-sm text-ink/80">
+                {step.tests.map((t, i) => <li key={i}>• {t.label ?? `Test ${i + 1}`}</li>)}
+              </ul>
+            </div>
+            <Editor
+              value={src}
+              onChange={setSrc}
+              onRun={runOnly}
+              onReset={() => { setSrc(step.starter); setRes(null); setTestResults([]); setHintLevel(0); }}
+            />
+            <Hints
+              leading={<RunButton onClick={runOnly} busy={busy} />}
+              hints={stepHints}
+              level={hintLevel}
+              onNext={() => setHintLevel((n) => Math.min(stepHints.length, n + 1))}
+              solution={step.solution}
+              onSolution={() => { setSrc(step.solution!); setRes(null); setTestResults([]); setHintLevel(stepHints.length + 1); }}
+            />
+            {testResults.length > 0 && (
+              <div className="grid gap-2" aria-label="Hasil test case">
+                {testResults.map((t, i) => (
+                  <div key={`${i}-${t.label}`} className={`rounded-2xl border p-4 text-sm ${t.pass ? "border-lime/40 bg-lime/10" : "border-danger/40 bg-danger/10"}`}>
+                    <p className={`font-bold ${t.pass ? "text-lime" : "text-danger"}`}>{t.pass ? "Lulus" : "Gagal"} · {t.label}</p>
+                    {!t.pass && (
+                      <p className="mt-1 whitespace-pre-wrap break-words text-ink/80">
+                        {t.error ?? `Diharapkan ${JSON.stringify(t.expected)}, didapat ${JSON.stringify(t.got)}.`}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <Output text={res?.out ?? ""} error={res?.error} running={busy} idle={!res} />
           </div>
         )}
@@ -231,6 +383,12 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
           {phase === "answer" && step?.type === "code" && (
             <button className="btn btn-lime w-full py-4 text-lg" disabled={!canCheck || busy} onClick={() => checkCodeStep(step)}>Periksa</button>
           )}
+          {phase === "answer" && step?.type === "predict" && (
+            <button className="btn btn-lime w-full py-4 text-lg" disabled={!canCheck || busy} onClick={() => checkPredict(step)}>Periksa</button>
+          )}
+          {phase === "answer" && step?.type === "debug" && (
+            <button className="btn btn-lime w-full py-4 text-lg" disabled={!canCheck || busy} onClick={() => checkDebugStep(step)}>Periksa</button>
+          )}
           {phase === "right" && <button className="btn btn-lime shrink-0 px-8" onClick={next}>Lanjut</button>}
           {phase === "wrong" && (
             <button className="btn btn-danger shrink-0 px-8" onClick={() => setPhase("answer")}>Coba lagi</button>
@@ -238,6 +396,56 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </footer>
     </div>
+  );
+}
+
+function Hints({
+  leading,
+  hints,
+  level,
+  onNext,
+  solution,
+  onSolution,
+}: {
+  leading?: React.ReactNode;
+  hints: string[];
+  level: number;
+  onNext: () => void;
+  solution?: string;
+  onSolution?: () => void;
+}) {
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        {leading}
+        {level < hints.length && (
+          <button
+            onClick={onNext}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-dim hover:text-ink"
+          >
+            <Lightbulb size={16} aria-hidden /> Petunjuk {level + 1}
+          </button>
+        )}
+        {solution && onSolution && level === hints.length && (
+          <button
+            onClick={onSolution}
+            className="rounded-xl px-3 py-2 text-sm font-semibold text-dim hover:text-ink"
+          >
+            Lihat solusi
+          </button>
+        )}
+      </div>
+      {level > 0 && (
+        <div className="grid gap-2">
+          {hints.slice(0, level).map((h, i) => (
+            <div key={i} className="rounded-2xl bg-raised p-4 text-sm">
+              <p className="font-bold text-lime">Petunjuk {i + 1}</p>
+              <div className="mt-1 text-ink/80"><Rich text={h} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

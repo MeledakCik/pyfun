@@ -1,4 +1,5 @@
 "use client";
+import type { CodeStep, Lesson } from "./types";
 
 /**
  * Menjalankan Python di browser lewat Pyodide dalam Web Worker.
@@ -99,14 +100,64 @@ export function checkCode(
   source: string,
   res: RunResult,
 ): { pass: boolean; reason?: string } {
-  if (!res.ok) return { pass: false, reason: "Kodemu masih error. Perbaiki dulu, lalu periksa lagi." };
+  if (!res.ok) {
+    return { pass: false, reason: "Kode belum bisa dijalankan. Baca pesan error di panel output, perbaiki, lalu coba lagi." };
+  }
   for (const pattern of step.need ?? []) {
-    if (!new RegExp(pattern).test(source)) return { pass: false, reason: "Output mungkin benar, tapi soal meminta cara tertentu. Baca lagi instruksinya." };
+    if (!new RegExp(pattern).test(source)) {
+      return { pass: false, reason: `Kode belum memenuhi pola yang diminta: \`${pattern}\`.` };
+    }
   }
   const got = res.out.trim();
-  if (step.out !== undefined && got !== step.out.trim()) return { pass: false, reason: "Output belum sama persis dengan yang diminta." };
+  if (step.out !== undefined && got !== step.out.trim()) {
+    return {
+      pass: false,
+      reason: `Output belum sama persis. Diharapkan ${JSON.stringify(step.out.trim())}, didapat ${JSON.stringify(got)}.`,
+    };
+  }
   for (const s of step.has ?? []) {
-    if (!got.includes(s)) return { pass: false, reason: `Output harus memuat "${s}".` };
+    if (!got.includes(s)) return { pass: false, reason: `Output belum memuat teks ${JSON.stringify(s)}.` };
   }
   return { pass: true };
+}
+
+/**
+ * Jalankan setiap `solution` langkah code di Pyodide dan bandingkan hasilnya
+ * dengan `out`/`has`/`need`. Mengembalikan daftar masalah yang bisa dikirim
+ * kembali ke endpoint generate untuk perbaikan.
+ */
+export async function validateCodeSolutions(
+  lesson: Lesson,
+  onStep?: (index: number, total: number) => void,
+): Promise<string[]> {
+  const steps = lesson.steps.filter((s): s is CodeStep => s.type === "code");
+  if (steps.length === 0) return [];
+
+  warmUp();
+  const issues: string[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    onStep?.(i, steps.length);
+    const step = steps[i];
+    if (!step.solution) {
+      issues.push(`Latihan ${i + 1}: solusi tidak tersedia.`);
+      continue;
+    }
+
+    const res = await runPython(step.solution);
+    if (!res.ok) {
+      const detail = res.timedOut
+        ? "timeout"
+        : (res.error ?? "").split("\n").slice(0, 2).join(" ").slice(0, 240);
+      issues.push(`Latihan ${i + 1}: solusi gagal dijalankan${detail ? ` — ${detail}` : "."}`);
+      continue;
+    }
+
+    try {
+      const check = checkCode(step, step.solution, res);
+      if (!check.pass) issues.push(`Latihan ${i + 1}: ${check.reason ?? "output tidak cocok."}`);
+    } catch {
+      issues.push(`Latihan ${i + 1}: solusi tidak bisa divalidasi.`);
+    }
+  }
+  return issues;
 }

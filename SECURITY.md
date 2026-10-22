@@ -26,7 +26,7 @@ Aturan:
 PyFun **tidak menyimpan password atau kredensial akun**. Yang disimpan hanya:
 
 - nama tampilan,
-- progres quest, XP, streak, nyawa, lencana,
+- progres quest, XP, streak, lencana,
 - isi playground.
 
 Semuanya berada di `localStorage` browser (`pyfun:v1`). Karena itu:

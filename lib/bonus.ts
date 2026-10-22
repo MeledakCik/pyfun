@@ -1,14 +1,18 @@
 import type { CodeStep, Lesson, LearnStep, QuizStep } from "./types";
 
 const learn = (title: string, body: string, code?: string): LearnStep => ({ type: "learn", title, body, code });
-const quiz = (q: string, options: string[], answer: number, explain: string): QuizStep => ({
-  type: "quiz", q, options, answer, explain,
-});
+const quiz = (
+  q: string,
+  options: string[],
+  answer: number,
+  explain: string,
+  wrong?: string[],
+): QuizStep => ({ type: "quiz", q, options, answer, explain, wrong });
 const code = (
   prompt: string,
   starter: string,
   check: { out?: string; has?: string[]; need?: string[] },
-  extra: { chips?: string[]; hint?: string; solution?: string } = {},
+  extra: { chips?: string[]; hint?: string; hint2?: string; solution?: string } = {},
 ): CodeStep => ({ type: "code", prompt, starter, ...check, ...extra });
 
 /**

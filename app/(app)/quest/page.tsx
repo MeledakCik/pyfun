@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Search, Sparkles, X } from "lucide-react";
+import { BookOpen, Search, Sparkles, X } from "lucide-react";
 import { Bar } from "@/components/ui";
+import { GenerateLesson } from "@/components/GenerateLesson";
 import { UnitHeader, LessonTrack, TrackSkeleton } from "@/components/QuestTrack";
 import { useGame } from "@/lib/store";
 import { BUNDLED, CHAPTERS, fetchSupabaseLessons } from "@/lib/lessons";
@@ -12,6 +13,7 @@ import type { Lesson } from "@/lib/types";
 const fmt = (n: number) => n.toLocaleString("id-ID");
 const PAGE = 6;
 const BONUS_KEY = "bonus";
+const MY_KEY = "mine";
 
 export default function QuestPage() {
   const { g } = useGame();
@@ -48,10 +50,17 @@ export default function QuestPage() {
   const bonusMinutes = bonusLessons.reduce((s, l) => s + l.minutes, 0);
   const allDone = !active && !loading && bonusLessons.length > 0 && bonusDone === bonusLessons.length;
 
+  const myLessons = g.generated;
+  const myDone = myLessons.filter((l) => g.progress[l.id]?.done).length;
+  const myXp = myLessons.reduce((s, l) => s + l.xp, 0);
+  const myMinutes = myLessons.reduce((s, l) => s + l.minutes, 0);
+  const myActive = myLessons.find((l) => !g.progress[l.id]?.done)?.id;
+  const myOpen = openUnits[MY_KEY] ?? true;
+
   const chapterOpen = (index: number) => openUnits[`ch-${index}`] ?? index === activeChapter;
   const bonusOpen = openUnits[BONUS_KEY] ?? !active;
 
-  const allKeys = [...chapters.map((u) => u.key), BONUS_KEY];
+  const allKeys = [...chapters.map((u) => u.key), MY_KEY, BONUS_KEY];
   const setAll = (value: boolean) => setOpenUnits(Object.fromEntries(allKeys.map((key) => [key, value])));
   // Untuk lompat antar-bab: buka satu unit saja supaya halaman tetap ringkas.
   const focusUnit = (key: string) => setOpenUnits(Object.fromEntries(allKeys.map((k) => [k, k === key])));
@@ -60,9 +69,16 @@ export default function QuestPage() {
   useEffect(() => {
     const openFromHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
-      const key = hash === "ch-bonus" ? BONUS_KEY : /^ch-\d+$/.test(hash) ? hash : null;
+      const key =
+        hash === "ch-bonus"
+          ? BONUS_KEY
+          : hash === "ch-mine"
+            ? MY_KEY
+            : /^ch-\d+$/.test(hash)
+              ? hash
+              : null;
       if (!key) return;
-      const keys = [...CHAPTERS.map((_, i) => `ch-${i}`), BONUS_KEY];
+      const keys = [...CHAPTERS.map((_, i) => `ch-${i}`), MY_KEY, BONUS_KEY];
       setOpenUnits(Object.fromEntries(keys.map((k) => [k, k === key])));
       setJumpTarget(hash);
     };
@@ -143,6 +159,62 @@ export default function QuestPage() {
         )}
       </section>
 
+      <GenerateLesson
+        onSaved={() => {
+          setOpenUnits((s) => ({ ...s, [MY_KEY]: true }));
+          setJumpTarget("ch-mine");
+        }}
+      />
+
+      {/* Materi buatan user; disimpan lokal dan tidak pernah masuk Supabase. */}
+      <section id="ch-mine" aria-labelledby="ch-mine-title" className="scroll-mt-24">
+        <UnitHeader
+          id="ch-mine-title"
+          eyebrow="Koleksi"
+          title="Materi Saya"
+          lessons={myLessons}
+          bonus
+          description={
+            myLessons.length === 0
+              ? "Belum ada materi buatanmu."
+              : `${myLessons.length} materi · ${fmt(myXp)} XP · ±${fmt(myMinutes)} menit`
+          }
+          open={myOpen}
+          onToggle={() => setOpenUnits((s) => ({ ...s, [MY_KEY]: !myOpen }))}
+          contentId="ch-mine-content"
+        />
+        <div id="ch-mine-content" hidden={!myOpen}>
+          {myLessons.length === 0 ? (
+            <div className="card mt-4 flex items-center gap-3 p-5">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-raised text-grape" aria-hidden>
+                <BookOpen size={20} />
+              </span>
+              <div>
+                <p className="font-display font-bold">Belum ada materi buatanmu</p>
+                <p className="mt-0.5 text-sm text-dim">
+                  Mulai dari <a href="#buat-materi" className="font-semibold text-lime hover:underline">Buat materi sendiri</a> di atas.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <LessonTrack
+                lessons={myLessons.slice(0, limitFor(MY_KEY))}
+                activeId={myActive}
+                labelPrefix="Karya"
+              />
+              {myLessons.length > limitFor(MY_KEY) && (
+                <ShowMore
+                  remaining={myLessons.length - limitFor(MY_KEY)}
+                  onClick={() => showMore(MY_KEY, myLessons.length)}
+                  noun="materi"
+                />
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
       {/* Navigator + kontrol lipat untuk jumlah bab/materi yang banyak. */}
       <section className="card w-full min-w-0 p-4" aria-label="Peta bab">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -186,6 +258,20 @@ export default function QuestPage() {
               </button>
             );
           })}
+
+          <button type="button" onClick={() => jumpTo(MY_KEY, "ch-mine")}
+            className="snap-start shrink-0 rounded-2xl border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:border-grape/30">
+            <span className="flex items-center gap-2">
+              <span className="grid h-6 w-6 place-items-center rounded-lg bg-grape/10 text-grape"><BookOpen size={13} aria-hidden /></span>
+              <span className="text-xs font-bold">Materi Saya</span>
+            </span>
+            <span className="mt-1.5 flex items-center gap-2 text-[10px] text-dim">
+              <span>{myDone}/{myLessons.length}</span>
+              <span className="h-1 w-14 overflow-hidden rounded-full bg-line">
+                <span className="block h-full rounded-full bg-grape" style={{ width: `${myLessons.length ? (myDone / myLessons.length) * 100 : 0}%` }} />
+              </span>
+            </span>
+          </button>
 
           <button type="button" onClick={() => jumpTo(BONUS_KEY, "ch-bonus")} aria-current={!active ? "step" : undefined}
             className={`snap-start shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-colors ${

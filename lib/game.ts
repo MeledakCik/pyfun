@@ -1,6 +1,3 @@
-export const MAX_HEARTS = 5;
-export const HEART_REGEN_MS = 15 * 60 * 1000;
-
 export const RANKS = [
   { name: "Bronze", min: 0, color: "#d6935a" },
   { name: "Silver", min: 300, color: "#c4c9d4" },
@@ -42,7 +39,7 @@ export function daysBetween(a: string, b: string) {
 
 export const BADGES: Record<string, { name: string; desc: string; icon: string }> = {
   first: { name: "Langkah pertama", desc: "Selesaikan quest pertama", icon: "Footprints" },
-  perfect: { name: "Tanpa salah", desc: "Selesaikan quest tanpa kehilangan nyawa", icon: "Sparkles" },
+  perfect: { name: "Tanpa salah", desc: "Selesaikan quest tanpa jawaban salah", icon: "Sparkles" },
   streak3: { name: "Api kecil", desc: "Streak 3 hari", icon: "Flame" },
   streak7: { name: "Api unggun", desc: "Streak 7 hari", icon: "Flame" },
   boss: { name: "Pembasmi boss", desc: "Kalahkan satu boss", icon: "Skull" },

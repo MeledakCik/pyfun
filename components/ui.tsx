@@ -1,13 +1,13 @@
 "use client";
 import {
-  BookOpen, Braces, Calculator, Check, Flame, Footprints, GitBranch, Heart, List,
+  BookOpen, Braces, Calculator, Check, Flame, Footprints, GitBranch, List,
   Lock, Package, Repeat, Skull, Sparkles, Terminal, Wand2, Zap, Code2, Database, Globe, Type,
   type LucideProps,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
 const ICONS: Record<string, ComponentType<LucideProps>> = {
-  BookOpen, Braces, Calculator, Check, Flame, Footprints, GitBranch, Heart, List, Lock,
+  BookOpen, Braces, Calculator, Check, Flame, Footprints, GitBranch, List, Lock,
   Package, Repeat, Skull, Sparkles, Terminal, Wand2, Zap, Code2, Database, Globe, Type,
 };
 export const ICON_NAMES = ["Terminal", "Package", "Calculator", "GitBranch", "Repeat", "List", "BookOpen", "Braces", "Code2", "Database", "Globe", "Type", "Sparkles"];
@@ -42,12 +42,11 @@ export function Chip({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
-export function Stats({ streak, xp, hearts }: { streak: number; xp: number; hearts: number }) {
+export function Stats({ streak, xp }: { streak: number; xp: number }) {
   return (
     <div className="flex items-center gap-2">
       <Chip><Flame size={16} className="text-lime" aria-hidden />{streak}</Chip>
       <Chip><Zap size={16} className="text-lime" aria-hidden />{xp}</Chip>
-      <Chip className={hearts === 0 ? "text-danger" : ""}><Heart size={16} className="text-danger" fill="currentColor" aria-hidden />{hearts}</Chip>
     </div>
   );
 }

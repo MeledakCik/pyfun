@@ -1,47 +1,118 @@
 "use client";
 import { useSyncExternalStore } from "react";
-import { BADGES, HEART_REGEN_MS, MAX_HEARTS, dayKey, daysBetween } from "./game";
+import { BADGES, dayKey, daysBetween } from "./game";
 import type { Lesson } from "./types";
 
 export type Progress = { stars: number; done: boolean };
 
 export type Game = {
-  v: 1;
+  v: 2;
   name: string | null;
   joinedAt: number;
   xp: number;
   streak: number;
   bestStreak: number;
   lastDay: string | null;
-  hearts: number;
-  heartsAt: number;
   progress: Record<string, Progress>;
   history: Record<string, number>; // YYYY-MM-DD -> xp
   badges: string[];
   code: string; // isi playground
+  /** Materi AI yang disimpan lokal; tidak pernah dikirim ke Supabase. */
+  generated: Lesson[];
 };
 
+// Key lama dipertahankan agar data pengguna tetap terbaca; versi schema ada di `v`.
 const KEY = "pyfun:v1";
 
 export const INITIAL: Game = {
-  v: 1,
+  v: 2,
   name: null,
   joinedAt: 0,
   xp: 0,
   streak: 0,
   bestStreak: 0,
   lastDay: null,
-  hearts: MAX_HEARTS,
-  heartsAt: 0,
   progress: {},
   history: {},
   badges: [],
   code: 'nama = "PyFun"\nprint("Halo,", nama)\n',
+  generated: [],
 };
+
+const GENERATED_LIMIT = 50;
+const STEP_TYPES = new Set(["learn", "quiz", "code", "predict", "debug"]);
 
 let state: Game = INITIAL;
 let hydrated = false;
 const listeners = new Set<() => void>();
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null;
+
+const finite = (v: unknown, fallback: number) =>
+  typeof v === "number" && Number.isFinite(v) ? v : fallback;
+
+/** Validasi minimum untuk data materi yang berasal dari localStorage. */
+function isGeneratedLesson(value: unknown): value is Lesson {
+  if (!isRecord(value) || value.source !== "generated") return false;
+  if (typeof value.id !== "string" || !value.id.startsWith("gen-")) return false;
+  if (typeof value.chapter !== "string" || typeof value.title !== "string") return false;
+  if (!Array.isArray(value.steps) || value.steps.length === 0) return false;
+  return value.steps.every(
+    (step) => isRecord(step) && typeof step.type === "string" && STEP_TYPES.has(step.type),
+  );
+}
+
+/**
+ * Migrasi state lama (`v: 1`) ke schema saat ini.
+ * Field nyawa (`hearts`, `heartsAt`) dan field sensitif lama (`custom`, `apiKey`)
+ * dibuang; XP, streak, lencana, progres, dan kode playground tetap dipertahankan.
+ */
+function migrate(raw: unknown): Game {
+  const old = isRecord(raw) ? raw : {};
+  const progress: Game["progress"] = {};
+  if (isRecord(old.progress)) {
+    for (const [id, value] of Object.entries(old.progress)) {
+      if (!isRecord(value) || typeof value.done !== "boolean") continue;
+      progress[id] = { done: value.done, stars: finite(value.stars, 0) };
+    }
+  }
+
+  const history: Game["history"] = {};
+  if (isRecord(old.history)) {
+    for (const [day, xp] of Object.entries(old.history)) {
+      if (typeof xp === "number" && Number.isFinite(xp)) history[day] = xp;
+    }
+  }
+
+  const generated: Lesson[] = [];
+  const seenGenerated = new Set<string>();
+  if (Array.isArray(old.generated)) {
+    for (const value of old.generated) {
+      if (!isGeneratedLesson(value) || seenGenerated.has(value.id)) continue;
+      seenGenerated.add(value.id);
+      generated.push(value);
+      if (generated.length >= GENERATED_LIMIT) break;
+    }
+  }
+
+  return {
+    v: 2,
+    name: typeof old.name === "string" ? old.name : null,
+    joinedAt: finite(old.joinedAt, 0),
+    xp: finite(old.xp, 0),
+    streak: finite(old.streak, 0),
+    bestStreak: finite(old.bestStreak, 0),
+    lastDay: typeof old.lastDay === "string" ? old.lastDay : null,
+    progress,
+    history,
+    badges: Array.isArray(old.badges)
+      ? old.badges.filter((b): b is string => typeof b === "string")
+      : [],
+    code: typeof old.code === "string" ? old.code : INITIAL.code,
+    generated,
+  };
+}
 
 function load() {
   if (hydrated || typeof window === "undefined") return;
@@ -49,13 +120,11 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      // Migrasi: buang field lama yang sudah tidak dipakai
-      const { custom: _c, apiKey: _a, ...rest } = parsed;
-      state = { ...INITIAL, ...rest };
+      state = migrate(JSON.parse(raw));
+      // Simpan hasil migrasi agar field lama (mis. nyawa) tidak terbaca lagi.
+      localStorage.setItem(KEY, JSON.stringify(state));
     }
   } catch {}
-  regen();
 }
 
 function commit(next: Game) {
@@ -64,15 +133,6 @@ function commit(next: Game) {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch {}
   listeners.forEach((l) => l());
-}
-
-function regen() {
-  if (state.hearts >= MAX_HEARTS) return;
-  const gained = Math.floor((Date.now() - state.heartsAt) / HEART_REGEN_MS);
-  if (gained > 0) {
-    const hearts = Math.min(MAX_HEARTS, state.hearts + gained);
-    state = { ...state, hearts, heartsAt: hearts >= MAX_HEARTS ? 0 : state.heartsAt + gained * HEART_REGEN_MS };
-  }
 }
 
 function subscribe(cb: () => void) {
@@ -95,25 +155,27 @@ export const actions = {
   rename(name: string) {
     commit({ ...state, name: name.trim() || state.name });
   },
-  tickHearts() {
-    const before = state;
-    regen();
-    if (state !== before) commit(state);
-  },
-  loseHeart() {
-    regen();
-    if (state.hearts <= 0) return;
-    commit({
-      ...state,
-      hearts: state.hearts - 1,
-      heartsAt: state.hearts >= MAX_HEARTS ? Date.now() : state.heartsAt,
-    });
-  },
-  refillHearts() {
-    commit({ ...state, hearts: MAX_HEARTS, heartsAt: 0 });
-  },
   saveCode(code: string) {
     commit({ ...state, code });
+  },
+  /** Simpan draft AI yang sudah lolos validasi ke koleksi lokal "Materi Saya". */
+  saveGenerated(lesson: Lesson) {
+    const now = Date.now();
+    const entry: Lesson = {
+      ...lesson,
+      id: `gen-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      chapter: "Materi Saya",
+      title: lesson.title || "Materi baru",
+      source: "generated",
+      track: "Materi Saya",
+      boss: false,
+      createdAt: now,
+    };
+    commit({
+      ...state,
+      generated: [entry, ...state.generated].slice(0, GENERATED_LIMIT),
+    });
+    return entry;
   },
   /** Dipanggil saat quest selesai. Mengembalikan ringkasan untuk layar hasil. */
   complete(lesson: Lesson, mistakes: number) {
@@ -158,9 +220,11 @@ export const actions = {
     return JSON.stringify(state, null, 2);
   },
   importJson(raw: string) {
-    const parsed = JSON.parse(raw);
-    if (parsed?.v !== 1) throw new Error("Format file tidak dikenali");
-    commit({ ...INITIAL, ...parsed });
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || (parsed.v !== 1 && parsed.v !== 2)) {
+      throw new Error("Format file tidak dikenali");
+    }
+    commit(migrate(parsed));
   },
   reset() {
     commit({ ...INITIAL, name: state.name, joinedAt: state.joinedAt, code: state.code });

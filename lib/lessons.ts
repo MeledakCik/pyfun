@@ -1,17 +1,32 @@
-import type { CodeStep, Lesson, LearnStep, QuizStep } from "./types";
+import type { CodeStep, DebugStep, DebugTest, Lesson, LearnStep, PredictStep, QuizStep } from "./types";
 import { LESSONS_TABLE, supabase } from "./supabase";
 import { BONUS_CATALOG, sortBonusLessons } from "./bonus";
 
 const learn = (title: string, body: string, code?: string): LearnStep => ({ type: "learn", title, body, code });
-const quiz = (q: string, options: string[], answer: number, explain: string): QuizStep => ({
-  type: "quiz", q, options, answer, explain,
-});
+const quiz = (
+  q: string,
+  options: string[],
+  answer: number,
+  explain: string,
+  wrong?: string[],
+): QuizStep => ({ type: "quiz", q, options, answer, explain, wrong });
 const code = (
   prompt: string,
   starter: string,
   check: { out?: string; has?: string[]; need?: string[] },
-  extra: { chips?: string[]; hint?: string; solution?: string } = {},
+  extra: { chips?: string[]; hint?: string; hint2?: string; solution?: string } = {},
 ): CodeStep => ({ type: "code", prompt, starter, ...check, ...extra });
+const predict = (
+  prompt: string,
+  code: string,
+  extra: { hint?: string; hint2?: string; explain?: string } = {},
+): PredictStep => ({ type: "predict", prompt, code, ...extra });
+const debug = (
+  prompt: string,
+  starter: string,
+  tests: DebugTest[],
+  extra: { hint?: string; hint2?: string; solution?: string } = {},
+): DebugStep => ({ type: "debug", prompt, starter, tests, ...extra });
 
 type Def = Omit<Lesson, "source" | "chapter"> & { chapter?: string };
 const mk = (chapter: string, defs: Def[]): Lesson[] =>
@@ -31,6 +46,11 @@ const ch1 = mk(CHAPTERS[0], [
     steps: [
       learn("Menampilkan teks", "`print()` menampilkan sesuatu ke layar. Teks harus diapit tanda kutip.", 'print("Halo, dunia!")'),
       quiz("Mana yang menampilkan teks Halo ke layar?", ['print("Halo")', "say Halo", "echo(Halo)", "print Halo"], 0, 'Di Python, fungsi `print()` dengan teks di dalam tanda kutip.'),
+      predict("Apa output kode ini?", 'nama = "PyFun"\nprint("Halo,", nama)', {
+        hint: "`print()` menampilkan setiap argumen secara berurutan.",
+        hint2: 'Argumen pertama "Halo," dan argumen kedua `nama` dipisahkan satu spasi.',
+        explain: "Output-nya `Halo, PyFun`.",
+      }),
       learn("Komentar", "Baris yang diawali `#` diabaikan Python. Gunakan untuk catatan.", '# ini komentar\nprint("ini tampil")'),
       code("Tampilkan tepat: Halo, PyFun!", "# tulis kodemu di bawah\n", { out: "Halo, PyFun!" }, {
         chips: ["print()", '"Halo, PyFun!"'], hint: 'Pakai print("...") dengan teks persis seperti di soal.', solution: 'print("Halo, PyFun!")',
@@ -80,6 +100,19 @@ const ch1 = mk(CHAPTERS[0], [
       code("Print angka 1 sampai 5, masing-masing di baris sendiri.", "", { out: "1\n2\n3\n4\n5", need: ["for\\s|while\\s"] }, {
         chips: ["for i in range(1, 6):", "print(i)"], hint: "range(1, 6) menghasilkan 1 sampai 5.", solution: "for i in range(1, 6):\n    print(i)",
       }),
+      debug(
+        "Fungsi berikut seharusnya menjumlahkan angka 1 sampai n. Perbaiki bug-nya.",
+        "def jumlah_sampai(n):\n    total = 0\n    for i in range(1, n):\n        total += i\n    return total\n",
+        [
+          { label: "jumlah_sampai(3) → 6", code: "print(jumlah_sampai(3))", expected: "6" },
+          { label: "jumlah_sampai(5) → 15", code: "print(jumlah_sampai(5))", expected: "15" },
+        ],
+        {
+          hint: "Perhatikan batas `range(1, n)`.",
+          hint2: "`range` berhenti sebelum argumen kedua, jadi `n` belum ikut dijumlahkan.",
+          solution: "def jumlah_sampai(n):\n    total = 0\n    for i in range(1, n + 1):\n        total += i\n    return total",
+        },
+      ),
     ],
   },
   {
@@ -583,10 +616,15 @@ export function isUnlocked(lesson: Lesson, progress: Record<string, { done: bool
   return i <= 0 || !!progress[BUNDLED[i - 1].id]?.done;
 }
 
-/** Cari lesson di materi bawaan, lalu di materi bonus (Supabase + katalog). */
-export function findLesson(id: string, supabaseLessons: Lesson[] = []) {
+/** Cari lesson di materi bawaan, materi buatan user, lalu materi bonus. */
+export function findLesson(
+  id: string,
+  supabaseLessons: Lesson[] = [],
+  generatedLessons: Lesson[] = [],
+) {
   return (
     BUNDLED.find((l) => l.id === id) ??
+    generatedLessons.find((l) => l.id === id) ??
     supabaseLessons.find((l) => l.id === id) ??
     BONUS_CATALOG.find((l) => l.id === id)
   );

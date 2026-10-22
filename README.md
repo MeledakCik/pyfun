@@ -11,8 +11,9 @@ npm run dev      # http://localhost:3000
 
 ## Cara kerja
 
-- **Progres** (XP, streak, nyawa, lencana, kode playground) disimpan di `localStorage` browser. Ekspor/impor JSON ada di halaman Profil.
-- **Materi inti** (5 bab, 25 quest) ada di `lib/lessons.ts` dan ikut di-bundle: Dasar Python, Struktur & Fungsi, String & Koleksi, Fungsi & Modul, Error & OOP.
+- **Progres** (XP, streak, lencana, kode playground) disimpan di `localStorage` browser. Ekspor/impor JSON ada di halaman Profil.
+- **Percobaan tak terbatas**: jawaban salah tidak mengunci quest. Gunakan **Petunjuk 1**, **Petunjuk 2**, lalu **Lihat solusi**; setiap jawaban salah disertai penjelasan.
+- **Materi inti** (5 bab, 25 quest) ada di `lib/lessons.ts` dan ikut di-bundle: Dasar Python, Struktur & Fungsi, String & Koleksi, Fungsi & Modul, Error & OOP. Quest mendukung langkah belajar, kuis, prediksi output, latihan kode, dan debug dengan test case.
 - **Materi bonus** berisi 15 materi terkurasi di `lib/bonus.ts` (Automasi & File, Web Scraping & Data, Analisis & Permodelan, Machine Learning Dasar, Keamanan & Deployment). Materi bonus lama yang sudah ada di Supabase tetap dipertahankan sebagai jalur **Fondasi Bonus**, sehingga totalnya biasanya 25 materi.
 - **Supabase** menyimpan salinan semua materi (inti + bonus) di `pyfun_lessons`. Katalog lokal tetap menjadi fallback offline/awal, lalu baris Supabase menimpa katalog jika tersedia.
 - **Python** dijalankan di browser dengan Pyodide (Web Worker, otomatis berhenti jika loop tak berujung). Butuh internet saat pertama kali memuat.
@@ -28,6 +29,8 @@ app/
   api/admin/sync/       simpan materi inti + katalog bonus ke Supabase
   api/admin/seed/       tambah materi bonus via AI/Groq (opsional)
   api/generate/         generate satu materi (butuh x-admin-secret)
+  api/lessons/generate/ draft materi AI untuk user (kuota Supabase, tanpa tulis materi)
+  api/lessons/suggest/  lima saran topik dari daftar id materi selesai
 components/             Shell, Editor, Rich, ui
 lib/
   lessons.ts            materi inti + merge materi bonus dari Supabase/katalog
@@ -59,13 +62,20 @@ Materi inti tetap dibundel sebagai fallback, tetapi salinannya juga tersimpan di
 
 Mau menambah materi AI? Jalankan `/api/admin/seed` setelah sync. Detail lengkap ada di `docs/seed-materi.md`.
 
+## Endpoint AI publik
+
+- `POST /api/lessons/generate` menerima `{ "topic": "...", "level": "pemula" }`. Topik dibatasi 3-80 karakter, divalidasi sebagai topik Python lewat satu panggilan Groq singkat, lalu dibuatkan draft. Draft **tidak** disimpan ke `pyfun_lessons`. Untuk perbaikan, client bisa menambahkan `repair: { attempt, errors, lesson }`; draft lama disanitasi ulang sebelum masuk prompt. Maksimal dua repair dari UI.
+- Kuota memakai tabel `pyfun_ai_daily_usage`: 10 generate per hash IP per hari dan batas global harian (default 100, bisa diatur lewat `AI_GLOBAL_DAILY_LIMIT`). Jalankan `supabase/schema.sql` agar tabel dan fungsi kuota tersedia.
+- `POST /api/lessons/suggest` menerima `{ "completedIds": ["print", "..."] }` dan mengembalikan `{ "topics": [ ...5 topik... ] }` berdasarkan katalog lokal, tanpa panggilan AI.
+- Kode hasil AI yang memuat `os`, `subprocess`, `socket`, `urllib`, `open`, `eval`, `exec`, atau `__import__` ditolak sebelum dikirim ke client.
+
 ## Menambah materi
 
-- Materi inti: edit `lib/lessons.ts`; quest memakai langkah `learn`, `quiz`, dan `code`.
+- Materi inti: edit `lib/lessons.ts`; quest memakai langkah `learn`, `quiz`, `predict`, `code`, dan `debug`.
 - Materi bonus: edit `lib/bonus.ts`; tambahkan `track` dan `sortOrder`, lalu jalankan `/api/admin/sync` agar tersimpan di Supabase.
 - Kode latihan sebaiknya hanya memakai **standard library Python** supaya berjalan di Pyodide tanpa dependency tambahan.
 
-Halaman `/quest` mendukung unit yang bisa dilipat, navigator bab horizontal, batas 6 materi per unit dengan tombol "tampilkan lagi", serta pencarian dan pengelompokan materi bonus per jalur.
+Halaman `/quest` mendukung unit yang bisa dilipat, navigator bab horizontal, batas 6 materi per unit dengan tombol "tampilkan lagi", serta pencarian dan pengelompokan materi bonus per jalur. Bagian "Buat materi sendiri" menjalankan setiap `solution` di Pyodide sebelum menyimpan draft ke unit "Materi Saya" di localStorage.
 
 ## Deploy ke Vercel
 
