@@ -62,6 +62,10 @@ dengan service role.
 `/api/admin/sync` tidak memakai Groq, jadi bisa dipakai untuk menyimpan materi
 tanpa biaya AI.
 
+Endpoint publik `/api/lessons/docs` tidak menerima URL dari client. Halaman
+hanya diambil dari whitelist `docs.python.org/id/3/` dan `docs.python.org/3/`,
+dengan batas ukuran body dan rate limit per IP.
+
 ## 5. Header & browser
 
 `next.config.ts` mengatur:

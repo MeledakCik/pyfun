@@ -27,7 +27,7 @@ Tidak ada script test. `lint` adalah typecheck; jangan mengarang `npm test`.
 - `app/(app)/` — halaman dengan navigasi: `quest`, `playground`, `ranks`, `profile`.
 - `app/play/[id]/page.tsx` — pemain quest layar penuh; menangani quiz, prediksi output, eksekusi kode, debug dengan test case, petunjuk bertingkat, dan XP.
 - `app/api/admin/` — `sync` untuk menyimpan materi ke Supabase dan `seed` untuk materi AI opsional; `app/api/generate/` untuk generate satu materi. Endpoint admin memakai header `x-admin-secret`.
-- `app/api/lessons/` — endpoint publik: `generate` membuat draft AI dengan kuota harian Supabase, `suggest` mengembalikan lima topik dari katalog. `generate` menerima `repair` opsional untuk draft yang gagal dites dan tidak menulis ke `pyfun_lessons`.
+- `app/api/lessons/` — endpoint publik: `docs` menyusun materi bacaan dari `docs.python.org/id/3/` tanpa AI, `generate` membuat draft AI dengan kuota harian Supabase (cadangan jika docs gagal), `suggest` mengembalikan lima topik dari katalog. `generate` menerima `repair` opsional untuk draft yang gagal dites dan tidak menulis ke `pyfun_lessons`.
 - `components/` — `Shell`, `Editor`, `Rich`, `QuestTrack`, `GenerateLesson`, `ui`.
 - `lib/lessons.ts` — 25 quest inti (`BUNDLED`), materi buatan user, dan penggabungan materi Supabase; `lib/bonus.ts` — 15 materi bonus terkurasi dan urutan track; `lib/types.ts` — schema materi.
 - `lib/store.ts` — state localStorage termasuk `generated`; `lib/python.ts` — runner Pyodide dan validasi solusi; `lib/supabase*.ts` — client publik/admin; `lib/admin-auth.ts` dan `lib/rate-limit.ts` — keamanan endpoint.
@@ -96,8 +96,19 @@ Materi inti diedit di `lib/lessons.ts` lewat helper `learn`/`quiz`/`predict`/`co
 
 - `BUNDLED` tetap menjadi fallback offline. Jangan memindahkan materi inti hanya ke Supabase.
 - `fetchSupabaseLessons()` memakai `BONUS_CATALOG` sebagai fallback, lalu baris Supabase menimpa katalog berdasarkan `id`. Baris `kind = 'core'` atau `source = 'bundled'` tidak ditampilkan sebagai bonus. Cache berlaku 30 detik.
-- `/quest` mengurutkan bonus menurut `BONUS_TRACKS` lalu `sortOrder`; materi lama tanpa track masuk ke `Fondasi Bonus`. Unit "Materi Saya" membaca `generated` dari localStorage; draft AI baru disimpan setelah semua `solution` lolos uji Pyodide, dengan maksimal dua permintaan perbaikan.
+- `/quest` mengurutkan bonus menurut `BONUS_TRACKS` lalu `sortOrder`; materi lama tanpa track masuk ke `Fondasi Bonus`. Unit "Materi Saya" membaca `generated` dari localStorage. "Buat materi sendiri" memakai `/api/lessons/docs` sebagai sumber utama; draft AI hanya dipakai jika endpoint docs benar-benar gagal, dan baru disimpan setelah semua `solution` lolos uji Pyodide (maksimal dua perbaikan).
 - Jalankan `supabase/schema.sql` sebelum `POST /api/admin/sync` dengan body `{"mode":"all"}`. Tanpa kolom `kind`, `track`, `sort_order`, dan `level`, sync akan gagal.
 - `SUPABASE_SERVICE_ROLE_KEY` hanya untuk server. Jangan pernah memberi prefix `NEXT_PUBLIC_`; RLS hanya mengizinkan `SELECT` untuk anon.
-- Schema state sekarang `v: 2`; data lama `v: 1` (termasuk `hearts`/`heartsAt`) dimigrasikan di `load()` dan `importJson()`. XP, streak, lencana, progres, dan kode playground dipertahankan. Materi AI disimpan lokal di `generated` dengan `source: "generated"`, tidak pernah ditulis ke Supabase, dan dibatasi 50 materi. Jangan menyimpan password atau kredensial di localStorage.
+- Schema state sekarang `v: 2`; data lama `v: 1` (termasuk `hearts`/`heartsAt`) dimigrasikan di `load()` dan `importJson()`. XP, streak, lencana, progres, dan kode playground dipertahankan. Materi buatan user disimpan lokal di `generated` dengan `source: "generated"`, tidak pernah ditulis ke Supabase, dan dibatasi 50 materi. Jangan menyimpan password atau kredensial di localStorage.
+- `/api/lessons/docs` memakai whitelist halaman tutorial Python, mem-parse HTML, dan mengembalikan `source: "docs"` sebelum disimpan. Jangan menerima URL bebas dari client (SSRF). Jika fetch/parse gagal, kembalikan fallback 3 langkah + tautan sumber dengan status 200, bukan error AI.
 - `/api/lessons/generate` memakai kuota atomik di tabel `pyfun_ai_daily_usage` (10/hash IP/hari + batas global, default 100/hari). Setiap permintaan `repair` juga melewati kuota yang sama. Hanya service role yang boleh mengakses tabel/fungsi kuota. `AI_RATE_LIMIT_SALT` opsional; fallback ke `ADMIN_SEED_SECRET`.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

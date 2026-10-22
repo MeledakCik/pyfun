@@ -29,6 +29,7 @@ app/
   api/admin/sync/       simpan materi inti + katalog bonus ke Supabase
   api/admin/seed/       tambah materi bonus via AI/Groq (opsional)
   api/generate/         generate satu materi (butuh x-admin-secret)
+  api/lessons/docs/     materi bacaan dari dokumentasi resmi Python (tanpa AI)
   api/lessons/generate/ draft materi AI untuk user (kuota Supabase, tanpa tulis materi)
   api/lessons/suggest/  lima saran topik dari daftar id materi selesai
 components/             Shell, Editor, Rich, ui
@@ -62,9 +63,10 @@ Materi inti tetap dibundel sebagai fallback, tetapi salinannya juga tersimpan di
 
 Mau menambah materi AI? Jalankan `/api/admin/seed` setelah sync. Detail lengkap ada di `docs/seed-materi.md`.
 
-## Endpoint AI publik
+## Endpoint materi publik
 
-- `POST /api/lessons/generate` menerima `{ "topic": "...", "level": "pemula" }`. Topik dibatasi 3-80 karakter, divalidasi sebagai topik Python lewat satu panggilan Groq singkat, lalu dibuatkan draft. Draft **tidak** disimpan ke `pyfun_lessons`. Untuk perbaikan, client bisa menambahkan `repair: { attempt, errors, lesson }`; draft lama disanitasi ulang sebelum masuk prompt. Maksimal dua repair dari UI.
+- `POST /api/lessons/docs` menerima `{ "topic": "...", "level": "pemula" }`. Endpoint ini mengambil halaman tutorial dari `docs.python.org/id/3/` (fallback ke versi Inggris), menyusun langkah `learn`, dan menyertakan tautan sumber. Tidak memakai AI atau kuota. Jika dokumentasi tidak bisa diakses, endpoint tetap mengembalikan ringkasan + tautan sumber dengan status 200 agar UI tidak menampilkan error AI.
+- `POST /api/lessons/generate` menerima `{ "topic": "...", "level": "pemula" }`. Topik dibatasi 3-80 karakter, divalidasi sebagai topik Python lewat satu panggilan Groq singkat, lalu dibuatkan draft. Draft **tidak** disimpan ke `pyfun_lessons`. Untuk perbaikan, client bisa menambahkan `repair: { attempt, errors, lesson }`; draft lama disanitasi ulang sebelum masuk prompt. Maksimal dua repair dari UI. Endpoint ini sekarang menjadi cadangan jika `/api/lessons/docs` gagal.
 - Kuota memakai tabel `pyfun_ai_daily_usage`: 10 generate per hash IP per hari dan batas global harian (default 100, bisa diatur lewat `AI_GLOBAL_DAILY_LIMIT`). Jalankan `supabase/schema.sql` agar tabel dan fungsi kuota tersedia.
 - `POST /api/lessons/suggest` menerima `{ "completedIds": ["print", "..."] }` dan mengembalikan `{ "topics": [ ...5 topik... ] }` berdasarkan katalog lokal, tanpa panggilan AI.
 - Kode hasil AI yang memuat `os`, `subprocess`, `socket`, `urllib`, `open`, `eval`, `exec`, atau `__import__` ditolak sebelum dikirim ke client.
@@ -75,7 +77,7 @@ Mau menambah materi AI? Jalankan `/api/admin/seed` setelah sync. Detail lengkap 
 - Materi bonus: edit `lib/bonus.ts`; tambahkan `track` dan `sortOrder`, lalu jalankan `/api/admin/sync` agar tersimpan di Supabase.
 - Kode latihan sebaiknya hanya memakai **standard library Python** supaya berjalan di Pyodide tanpa dependency tambahan.
 
-Halaman `/quest` mendukung unit yang bisa dilipat, navigator bab horizontal, batas 6 materi per unit dengan tombol "tampilkan lagi", serta pencarian dan pengelompokan materi bonus per jalur. Bagian "Buat materi sendiri" menjalankan setiap `solution` di Pyodide sebelum menyimpan draft ke unit "Materi Saya" di localStorage.
+Halaman `/quest` mendukung unit yang bisa dilipat, navigator bab horizontal, batas 6 materi per unit dengan tombol "tampilkan lagi", serta pencarian dan pengelompokan materi bonus per jalur. Bagian "Buat materi sendiri" mengambil materi dari dokumentasi resmi Python dan menyimpannya ke unit "Materi Saya" di localStorage. Jika AI dipakai sebagai cadangan, setiap `solution` tetap dijalankan di Pyodide sebelum draft disimpan.
 
 ## Deploy ke Vercel
 

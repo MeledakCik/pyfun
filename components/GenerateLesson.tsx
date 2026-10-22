@@ -27,7 +27,27 @@ function isLesson(value: unknown): value is Lesson {
   );
 }
 
-async function requestDraft(topic: string, level: DraftLevel, repair?: RepairRequest): Promise<Lesson> {
+async function requestDocsDraft(topic: string, level: DraftLevel): Promise<{ lesson: Lesson; fallback: boolean }> {
+  const res = await fetch("/api/lessons/docs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topic, level }),
+  });
+  const data = (await res.json().catch(() => null)) as {
+    lesson?: unknown;
+    error?: unknown;
+    fallback?: unknown;
+  } | null;
+  if (!res.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : "Materi dokumentasi belum bisa dimuat.");
+  }
+  if (!isLesson(data?.lesson)) {
+    throw new Error("Balasan materi dokumentasi tidak valid. Coba topik lain.");
+  }
+  return { lesson: data.lesson, fallback: data?.fallback === true };
+}
+
+async function requestAiDraft(topic: string, level: DraftLevel, repair?: RepairRequest): Promise<Lesson> {
   const res = await fetch("/api/lessons/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -41,6 +61,33 @@ async function requestDraft(topic: string, level: DraftLevel, repair?: RepairReq
     throw new Error("Balasan materi tidak valid. Coba topik lain.");
   }
   return data.lesson;
+}
+
+/** Dokumentasi Python adalah sumber utama; AI hanya dipakai jika endpoint docs benar-benar gagal. */
+async function loadDraft(
+  topic: string,
+  level: DraftLevel,
+): Promise<{ lesson: Lesson; fromDocs: boolean; fallback: boolean }> {
+  try {
+    const docs = await requestDocsDraft(topic, level);
+    return { lesson: docs.lesson, fromDocs: true, fallback: docs.fallback };
+  } catch (docsError) {
+    console.warn("Materi dokumentasi gagal dimuat, mencoba AI.", docsError);
+    try {
+      const lesson = await requestAiDraft(topic, level);
+      return { lesson, fromDocs: false, fallback: false };
+    } catch {
+      throw new Error("Materi belum bisa diambil dari dokumentasi Python. Coba lagi sebentar.");
+    }
+  }
+}
+
+function friendlyError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (/layanan ai|sibuk|502|503|429/i.test(message)) {
+    return "Materi belum bisa diambil dari dokumentasi Python. Coba lagi sebentar.";
+  }
+  return message || "Gagal membuat materi. Coba lagi.";
 }
 
 async function requestSuggestions(completedIds: string[]): Promise<string[]> {
@@ -69,6 +116,7 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState<Lesson | null>(null);
+  const [savedFromDocs, setSavedFromDocs] = useState(false);
 
   const completedIds = Object.entries(g.progress)
     .filter(([, progress]) => progress.done)
@@ -100,39 +148,55 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
     setBusy(true);
     setError("");
     setSaved(null);
+    setSavedFromDocs(false);
     try {
-      setStatus("Membuat draft materi…");
-      let draft = await requestDraft(clean, level);
+      setStatus("Mengambil materi dari dokumentasi Python…");
+      const first = await loadDraft(clean, level);
+      let draft = first.lesson;
+      const fromDocs = first.fromDocs;
 
-      setStatus("Menguji solusi kode di Pyodide…");
-      let issues = await validateCodeSolutions(draft, (index, total) => {
-        setStatus(`Menguji solusi ${index + 1}/${total} di Pyodide…`);
-      });
-
-      for (let attempt = 1; attempt <= 2 && issues.length > 0; attempt++) {
-        setStatus(`Ada ${issues.length} solusi bermasalah. Meminta AI memperbaiki (${attempt}/2)…`);
-        draft = await requestDraft(clean, level, { attempt, errors: issues, lesson: draft });
-        setStatus("Menguji ulang solusi di Pyodide…");
-        issues = await validateCodeSolutions(draft, (index, total) => {
-          setStatus(`Menguji ulang solusi ${index + 1}/${total} di Pyodide…`);
+      if (fromDocs) {
+        setStatus(
+          first.fallback
+            ? "Dokumentasi Python sedang lambat. Ringkasan dan tautan sumber tetap disiapkan…"
+            : "Materi dokumentasi diterima. Menyiapkan langkah belajar…",
+        );
+      } else {
+        setStatus("Menguji solusi kode cadangan di Pyodide…");
+        let issues = await validateCodeSolutions(draft, (index, total) => {
+          setStatus(`Menguji solusi ${index + 1}/${total} di Pyodide…`);
         });
-      }
 
-      if (issues.length > 0) {
-        setStatus("");
-        setError(`Materi belum lolos validasi setelah 2 perbaikan dan tidak disimpan.\n${issues.slice(0, 3).join("\n")}`);
-        return;
+        for (let attempt = 1; attempt <= 2 && issues.length > 0; attempt++) {
+          setStatus(`Ada ${issues.length} solusi bermasalah. Meminta AI memperbaiki (${attempt}/2)…`);
+          try {
+            draft = await requestAiDraft(clean, level, { attempt, errors: issues, lesson: draft });
+          } catch {
+            throw new Error("Materi belum bisa diambil dari dokumentasi Python. Coba lagi sebentar.");
+          }
+          setStatus("Menguji ulang solusi di Pyodide…");
+          issues = await validateCodeSolutions(draft, (index, total) => {
+            setStatus(`Menguji ulang solusi ${index + 1}/${total} di Pyodide…`);
+          });
+        }
+
+        if (issues.length > 0) {
+          setStatus("");
+          setError(`Materi belum lolos validasi setelah 2 perbaikan dan tidak disimpan.\n${issues.slice(0, 3).join("\n")}`);
+          return;
+        }
       }
 
       const entry = actions.saveGenerated({ ...draft, level });
       setSaved(entry);
+      setSavedFromDocs(fromDocs);
       setSuggestions([]);
       setTopic("");
-      setStatus(`Materi "${entry.title}" disimpan ke Materi Saya.`);
+      setStatus(`Materi "${entry.title}" disimpan ke Materi Saya${fromDocs ? " dari dokumentasi Python" : ""}.`);
       onSaved?.(entry);
     } catch (e) {
       setStatus("");
-      setError(e instanceof Error ? e.message : "Gagal membuat materi. Coba lagi.");
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
@@ -147,10 +211,10 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
           <Wand2 size={20} />
         </span>
         <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-dim">AI · Materi Saya</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-dim">Dokumentasi Python · Materi Saya</p>
           <h2 id="buat-materi-title" className="mt-0.5 font-display text-xl font-bold">Buat materi sendiri</h2>
           <p className="mt-1 text-sm text-dim">
-            Tulis topik Python. Setiap solusi kode diuji di Pyodide sebelum materi disimpan.
+            Tulis topik Python. Materi diambil dari dokumentasi resmi Python; AI hanya dipakai sebagai cadangan.
           </p>
         </div>
       </div>
@@ -165,6 +229,7 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
               setTopic(e.target.value);
               setError("");
               setSaved(null);
+              setSavedFromDocs(false);
             }}
             maxLength={80}
             placeholder="Contoh: list comprehension"
@@ -193,9 +258,21 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
         </button>
         <button type="button" onClick={generate} disabled={locked || topic.trim().length < 3} className="btn btn-lime px-4 py-2.5 text-sm">
           {busy ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Wand2 size={16} aria-hidden />}
-          {busy ? "Memproses…" : "Buat materi"}
+          {busy ? "Memproses…" : "Ambil materi"}
         </button>
       </div>
+      <p className="mt-2 text-xs text-faint">
+        Sumber utama:{" "}
+        <a
+          href="https://docs.python.org/id/3/"
+          target="_blank"
+          rel="noreferrer"
+          className="underline decoration-line underline-offset-2 hover:text-ink"
+        >
+          dokumentasi resmi Python
+        </a>
+        . Materi tetap bisa dibaca meski AI sedang sibuk.
+      </p>
 
       {suggestions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2" aria-label="Saran topik">
@@ -208,6 +285,7 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
                 setTopic(suggestion);
                 setError("");
                 setSaved(null);
+                setSavedFromDocs(false);
               }}
               className="rounded-full border border-line bg-raised px-3 py-1.5 text-xs font-semibold text-dim transition-colors hover:border-grape/40 hover:text-ink disabled:opacity-60"
             >
@@ -228,7 +306,10 @@ export function GenerateLesson({ onSaved }: { onSaved?: (lesson: Lesson) => void
       {saved && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-lime/30 bg-lime/10 p-3 text-sm">
           <Check size={16} className="shrink-0 text-lime" aria-hidden />
-          <span className="min-w-0 flex-1 break-words text-ink/80">Tersimpan di Materi Saya: <b className="text-ink">{saved.title}</b></span>
+          <span className="min-w-0 flex-1 break-words text-ink/80">
+            Tersimpan di Materi Saya: <b className="text-ink">{saved.title}</b>
+            {savedFromDocs ? " · dokumentasi Python" : ""}
+          </span>
           <Link href={`/play/${saved.id}`} className="btn btn-dark px-3 py-2 text-xs">Buka materi</Link>
         </div>
       )}

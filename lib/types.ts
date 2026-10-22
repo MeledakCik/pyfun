@@ -75,8 +75,8 @@ export type Lesson = {
   minutes: number;
   boss?: boolean;
   steps: Step[];
-  /** `catalog` = materi bonus bawaan; `generated` = materi buatan user di localStorage. */
-  source: "bundled" | "supabase" | "catalog" | "generated";
+  /** `catalog` = materi bonus bawaan; `docs` = materi dari dokumentasi Python; `generated` = materi buatan user di localStorage. */
+  source: "bundled" | "supabase" | "catalog" | "docs" | "generated";
   /** Jalur/kelompok materi bonus, mis. "Machine Learning Dasar". */
   track?: string;
   level?: "pemula" | "menengah" | "lanjutan";
