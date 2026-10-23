@@ -38,6 +38,18 @@ export const CHAPTERS = [
   "String & Koleksi",
   "Fungsi & Modul",
   "Error & OOP",
+  "Dasar Python Buku",
+  "Kontrol Alur Buku",
+  "String & List Buku",
+  "Struktur Data Buku",
+  "Fungsi Buku",
+  "File & Modul Buku",
+  "OOP & Error Buku",
+  "Algoritma & Math Buku",
+  "Topik Lanjut Buku",
+  "Python Pro",
+  "Algoritma Gacor",
+  "Testing & Async",
 ] as const;
 
 const ch1 = mk(CHAPTERS[0], [
@@ -514,8 +526,372 @@ print(r.saldo)`, { out: "Saldo tidak cukup\n70000", need: ["raise", "self\\.sald
     ],
   },
 ]);
+// ============================================================
+// BUKU HEINOLD — PART 1
+// ============================================================
+const ch6 = mk(CHAPTERS[5], [
+  { id: "bk-print-var", title: "Print & variabel", icon: "Terminal", xp: 120, minutes: 4, steps: [
+    learn("print dan variabel", "print() menampilkan teks. Variabel menyimpan nilai dengan =. Nama tidak boleh diawali angka.", "nama = 'Rani'\nprint(nama)\numur = 16\nprint(umur + 1)"),
+    quiz("Cara menyimpan 16 ke variabel umur?", ["umur = 16", "16 = umur", "umur == 16", "let umur = 16"], 0, "Tanda = mengisi; == membandingkan."),
+    code("Print isi variabel kota.", "", { out: "Bandung" }, { solution: "kota = 'Bandung'\nprint(kota)" }),
+  ]},
+  { id: "bk-input-typecast", title: "Input & konversi", icon: "Package", xp: 120, minutes: 5, steps: [
+    learn("input() selalu string", "input() mengembalikan teks. Ubah dengan int() atau float() untuk berhitung. type() melihat tipe.", "angka = int(input('Angka: '))\nprint(angka + 1)\nprint(type(angka))"),
+    quiz("int('12') + 3 = ?", ["123", "15", "12", "Error"], 1, "int('12') jadi 12, tambah 3 = 15."),
+    code("Ubah teks '42' ke int, tambah 8, print.", "teks = '42'\n", { out: "50", need: ["int"] }, { solution: "print(int(teks) + 8)" }),
+  ]},
+  { id: "bk-identifier", title: "Identifier & komentar", icon: "Code2", xp: 110, minutes: 4, steps: [
+    learn("Aturan nama", "Identifier tidak boleh diawali angka atau ada spasi/simbol. Komentar diawali #.", "# ini komentar\nnilai_siswa = 10\nprint(nilai_siswa)"),
+    quiz("Identifier valid?", ["1nilai", "nilai_1", "nilai 1", "nilai!"], 1, "Boleh huruf, angka, underscore. Tidak diawali angka."),
+  ]},
+  { id: "bk-operator-arit", title: "Operator aritmatika", icon: "Calculator", xp: 120, minutes: 5, steps: [
+    learn("// % **", "// pembagian bulat, % sisa bagi, ** pangkat. Urutan: ** dulu, lalu * / // %, terakhir + -.", "print(7 // 2)\nprint(7 % 2)\nprint(2 ** 3)"),
+    quiz("7 // 2 = ?", ["3.5", "3", "4", "1"], 1, "// membuang bagian desimal."),
+    code("Print 17 // 5 lalu 17 % 5.", "", { out: "3\n2" }, { solution: "print(17 // 5)\nprint(17 % 5)" }),
+  ]},
+  { id: "bk-operator-logika", title: "Operator logika", icon: "GitBranch", xp: 130, minutes: 5, steps: [
+    learn("and, or, not", "and benar jika keduanya benar, or benar jika salah satu, not membalik. Perbandingan berantai 1 < x < 10 valid.", "x = 5\nprint(1 < x < 10)\nprint(x == 5 and x != 0)\nprint(not False)"),
+    quiz("True and not False = ?", ["True", "False", "None", "Error"], 0, "not False = True; True and True = True."),
+    code("Print 3 < 5 and 5 < 10.", "", { out: "True", need: ["and"] }, { solution: "print(3 < 5 and 5 < 10)" }),
+  ]},
+  { id: "bk-tipe-data", title: "Tipe data", icon: "Package", xp: 130, minutes: 5, steps: [
+    learn("int, float, str, bool", "int bilangan bulat, float desimal, str teks, bool True/False. Cek dengan type().", "print(type(42))\nprint(type(3.14))\nprint(type('teks'))\nprint(type(True))"),
+    quiz("Tipe 3.14?", ["int", "float", "str", "bool"], 1, "Angka dengan titik desimal bertipe float."),
+  ]},
+  { id: "bk-casting", title: "Type casting", icon: "Package", xp: 120, minutes: 4, steps: [
+    learn("Konversi tipe", "int() ke bilangan bulat, float() ke desimal, str() ke teks. int('3.9') gagal; pakai int(float('3.9')) → 3.", "print(int('12') + 3)\nprint(int(float('3.9')))"),
+    quiz("Hasil int('12') + 3?", ["123", "15", "12", "Error"], 1, "int('12') jadi 12, tambah 3 = 15."),
+  ]},
+]);
 
-export const BUNDLED: Lesson[] = [...ch1, ...ch2, ...ch3, ...ch4, ...ch5];
+const ch7 = mk(CHAPTERS[6], [
+  { id: "bk-if", title: "If dasar", icon: "GitBranch", xp: 130, minutes: 5, steps: [
+    learn("if dan indentasi", "if menjalankan blok hanya jika benar. Blok diindentasi 4 spasi, akhiri baris if dengan titik dua.", "nilai = 80\nif nilai >= 75:\n    print('Lulus')"),
+    quiz("Cek x sama dengan 5?", ["x = 5", "x == 5", "x => 5", "x equals 5"], 1, "== membandingkan, = mengisi."),
+  ]},
+  { id: "bk-if-else", title: "If-else & elif", icon: "GitBranch", xp: 140, minutes: 5, steps: [
+    learn("else dan elif", "else dijalankan jika if salah. elif dicek berurutan sampai salah satu benar.", "nilai = 85\nif nilai >= 90:\n    print('A')\nelif nilai >= 80:\n    print('B')\nelse:\n    print('C')"),
+    quiz("nilai = 85, blok mana?", ["if >= 90", "elif >= 80", "else", "semua"], 1, "85 tidak >= 90, tapi >= 80."),
+  ]},
+  { id: "bk-nested-if", title: "Nested if", icon: "GitBranch", xp: 130, minutes: 5, steps: [
+    learn("if dalam if", "Nested if menaruh if di dalam if. Setiap level menambah indentasi 4 spasi.", "umur = 20\nif umur >= 17:\n    if umur < 60:\n        print('Dewasa muda')"),
+    quiz("Nested if artinya?", ["if di luar fungsi", "if di dalam if", "if tanpa else", "if banyak elif"], 1, "if di dalam blok if lain."),
+  ]},
+  { id: "bk-for", title: "For & range", icon: "Repeat", xp: 140, minutes: 5, steps: [
+    learn("for dan range", "range(n) = 0 sampai n-1. range(a, b) mulai a sampai b-1. range(a, b, step) melompat step.", "for i in range(3):\n    print(i)\nfor i in range(1, 6, 2):\n    print(i)"),
+    quiz("range(4) = ?", ["1 2 3 4", "0 1 2 3", "0 1 2 3 4", "1 2 3"], 1, "range(4) dari 0 sampai sebelum 4."),
+  ]},
+  { id: "bk-nested-for", title: "Nested for & pola", icon: "Repeat", xp: 150, minutes: 6, steps: [
+    learn("Loop di dalam loop", "Loop dalam menyelesaikan semua putaran untuk tiap putaran luar. Cocok untuk tabel dan pola bintang.", "for i in range(1, 4):\n    for j in range(1, 4):\n        print(i, j)\nfor i in range(1, 4):\n    print('*' * i)"),
+    quiz("3 luar × 4 dalam = ?", ["7", "12", "3", "4"], 1, "3 × 4 = 12 putaran loop dalam."),
+  ]},
+  { id: "bk-while", title: "While loop", icon: "Repeat", xp: 140, minutes: 5, steps: [
+    learn("while dan syarat berhenti", "while mengulang selama kondisi benar. Wajib ada perubahan yang membuat kondisi salah (misalnya n -= 1).", "n = 3\nwhile n > 0:\n    print(n)\n    n -= 1\nprint('Go!')"),
+    quiz("Agar while berhenti?", ["print()", "ubah variabel kondisi", "input()", "komentar"], 1, "Tanpa perubahan, loop berjalan selamanya."),
+  ]},
+  { id: "bk-break-continue", title: "Break & continue", icon: "Repeat", xp: 150, minutes: 5, steps: [
+    learn("Kendali loop", "break menghentikan loop. continue melewati satu putaran. else pada loop dijalankan jika selesai tanpa break.", "for i in range(1, 6):\n    if i == 4:\n        break\n    print(i)"),
+    quiz("continue = ?", ["hentikan loop", "lewati sisa putaran", "ulang dari awal", "tutup program"], 1, "continue langsung ke putaran berikutnya."),
+  ]},
+]);
+
+const ch8 = mk(CHAPTERS[7], [
+  { id: "bk-string-dasar", title: "String dasar", icon: "Type", xp: 120, minutes: 4, steps: [
+    learn("Membuat string", "String diapit kutip tunggal, ganda, atau triple. len() panjang, + gabung, * ulang.", "s = 'PyFun'\nprint(len(s))\nprint(s + '!')\nprint(s * 2)"),
+    quiz("len('PyFun')?", ["4", "5", "6", "0"], 1, "5 huruf: P, y, F, u, n."),
+  ]},
+  { id: "bk-string-index", title: "Index & slice", icon: "Type", xp: 130, minutes: 5, steps: [
+    learn("Index dan slice", "Index mulai 0, negatif dari belakang. Slice [mulai:berhenti:langkah] berhenti sebelum akhir. Langkah -1 membalik.", "s = 'Python'\nprint(s[0], s[-1])\nprint(s[1:4])\nprint(s[::-1])"),
+    quiz("'Python'[1:4] = ?", ["Pyt", "yth", "ytho", "tho"], 1, "Slice 1:4 ambil indeks 1, 2, 3."),
+  ]},
+  { id: "bk-string-metode", title: "Metode string", icon: "Type", xp: 140, minutes: 5, steps: [
+    learn("lower, upper, replace, count", "lower/upper ubah kapitalisasi, replace ganti teks, count hitung kemunculan, index cari posisi, isalpha cek huruf.", "s = 'PyFun'\nprint(s.lower())\nprint(s.upper())\nprint('banana'.count('a'))"),
+    quiz("s.lower() ubah?", ["string asli", "kembalikan string baru", "angka", "list"], 1, "String immutable, jadi return string baru."),
+  ]},
+  { id: "bk-string-escape", title: "Escape & format", icon: "Type", xp: 130, minutes: 5, steps: [
+    learn("Escape dan f-string", "Baris baru = backslash+n, tab = backslash+t. f-string pakai f'...' dan {ekspresi}. :.2f = 2 desimal.", "print('Halo\\nDunia')\nskor = 87.5\nprint(f'Nilai: {skor:.1f}')"),
+    quiz("f'{3.14159:.2f}' = ?", ["3.14", "3.142", "3.1", "3.14159"], 0, ":.2f bulatkan ke 2 desimal."),
+  ]},
+  { id: "bk-string-split-join", title: "Split & join", icon: "Type", xp: 140, minutes: 5, steps: [
+    learn("split & join", "split() pecah jadi list kata. join() gabung dengan pemisah. strip() buang spasi ujung.", "kata = 'apel jeruk mangga'.split()\nprint(kata)\nprint('-'.join(kata))\nprint('  py  '.strip())"),
+    quiz("'a,b,c'.split(',')?", ["['a,b,c']", "['a','b','c']", "'abc'", "['abc']"], 1, "split(',') pecah tiap koma."),
+  ]},
+  { id: "bk-list-dasar", title: "List dasar", icon: "List", xp: 120, minutes: 4, steps: [
+    learn("List", "List pakai []. Index mulai 0. len() hitung elemen.", "buah = ['apel', 'jeruk', 'mangga']\nprint(buah[0])\nprint(len(buah))"),
+    quiz("buah[1]?", ["apel", "jeruk", "mangga", "error"], 1, "Index 1 = elemen kedua."),
+  ]},
+  { id: "bk-list-metode", title: "Metode list", icon: "List", xp: 140, minutes: 5, steps: [
+    learn("append, insert, remove, sort", "append tambah akhir, insert di posisi, remove hapus nilai, pop berdasarkan indeks, sort urut, reverse balik.", "nilai = [75, 60, 90]\nnilai.append(85)\nnilai.sort(reverse=True)\nprint(nilai)"),
+    quiz("[3,1,2]; a.sort(); print(a)?", ["[3,1,2]", "[1,2,3]", "None", "Error"], 1, "sort() urut in-place."),
+  ]},
+  { id: "bk-list-comp", title: "List comprehension", icon: "List", xp: 150, minutes: 5, steps: [
+    learn("List comprehension", "Sintaks [ekspresi for item in iterable if kondisi] buat list ringkas.", "squares = [x*x for x in range(5)]\nprint(squares)\nevens = [x for x in range(10) if x % 2 == 0]\nprint(evens)"),
+    quiz("[x*2 for x in [1,2,3]]?", ["[2,4,6]", "[1,2,3]", "[3,6,9]", "[0,2,4]"], 0, "Setiap elemen × 2."),
+  ]},
+  { id: "bk-list-2d", title: "List 2D", icon: "List", xp: 150, minutes: 6, steps: [
+    learn("List berisi list", "List 2D untuk tabel. Akses L[baris][kolom]. Loop bersarang cetak isinya.", "data = [[1, 2], [3, 4]]\nprint(data[1][0])\nfor baris in data:\n    for nilai in baris:\n        print(nilai, end=' ')\n    print()"),
+    quiz("L[1][0]?", ["baris 0 kol 1", "baris 1 kol 0", "semua", "error"], 1, "Indeks pertama baris, kedua kolom."),
+  ]},
+]);
+
+const ch9 = mk(CHAPTERS[8], [
+  { id: "bk-tuple", title: "Tuple & unpacking", icon: "Package", xp: 130, minutes: 4, steps: [
+    learn("Tuple", "Tuple pakai (). Immutable. Unpacking pecah jadi variabel: a, b = (1, 2).", "koordinat = (10, 20)\nx, y = koordinat\nprint(x, y)"),
+    quiz("Tuple bisa diubah?", ["ya", "tidak", "hanya angka", "hanya string"], 1, "Tuple immutable."),
+  ]},
+  { id: "bk-set", title: "Set & operasinya", icon: "Package", xp: 140, minutes: 5, steps: [
+    learn("Set", "Set = nilai unik tanpa urutan. | union, & intersection, - difference, ^ symmetric. sorted() untuk urut.", "a = {1, 2, 3}\nb = {3, 4}\nprint(a | b)\nprint(a & b)\nprint(sorted(set([3, 1, 3, 2, 1])))"),
+    quiz("len(set([1,1,2,3,3]))?", ["2", "3", "5", "6"], 1, "Set buang duplikat → 1, 2, 3."),
+  ]},
+  { id: "bk-dict", title: "Dictionary dasar", icon: "BookOpen", xp: 130, minutes: 5, steps: [
+    learn("Kunci-nilai", "Dictionary simpan data berpasangan kunci: nilai. Akses lewat kunci. Tambah dengan d[k] = v.", "siswa = {'nama': 'Rani', 'umur': 16}\nprint(siswa['nama'])\nsiswa['kelas'] = '10A'\nprint(siswa)"),
+    quiz("Ambil 'nama'?", ["siswa.nama", "siswa['nama']", "siswa(nama)", "siswa[0]"], 1, "Dict diakses lewat kunci di []."),
+  ]},
+  { id: "bk-dict-lanjut", title: "Dictionary lanjutan", icon: "BookOpen", xp: 150, minutes: 6, steps: [
+    learn("get, items, update", "get(k, default) aman. items() pasangan, keys()/values(). ** gabung dict (kanan menang).", "skor = {'Ani': 80, 'Budi': 95}\nprint(skor.get('Cici', 0))\nprint(list(skor.items()))\ngabung = {**skor, 'Cici': 85}\nprint(gabung)"),
+    quiz("d.get('x', 0) jika 'x' tidak ada?", ["None", "0", "KeyError", "False"], 1, "get return default."),
+  ]},
+]);
+
+const ch10 = mk(CHAPTERS[9], [
+  { id: "bk-fungsi", title: "Fungsi dasar", icon: "Braces", xp: 140, minutes: 5, steps: [
+    learn("def dan return", "def buat fungsi, return kirim hasil keluar. Tanpa return → None.", "def kuadrat(n):\n    return n * n\n\nprint(kuadrat(7))"),
+    quiz("Fungsi tanpa return?", ["0", "None", "string kosong", "Error"], 1, "Return None jika tidak ada return."),
+  ]},
+  { id: "bk-fungsi-arg", title: "Argumen & return", icon: "Braces", xp: 150, minutes: 5, steps: [
+    learn("Default & keyword", "Parameter bisa punya default. Panggil dengan nama parameter. Fungsi bisa return beberapa nilai (tuple).", "def pangkat(angka, eksponen=2):\n    return angka ** eksponen\n\nprint(pangkat(5))\nprint(pangkat(2, 3))"),
+    quiz("Definisi default yang benar?", ["def f(x=1):", "def f(x): = 1", "def f(x =):", "f(x=1)"], 0, "Nilai default setelah nama parameter."),
+  ]},
+  { id: "bk-fungsi-scope", title: "Scope & global", icon: "Globe", xp: 150, minutes: 5, steps: [
+    learn("Variabel lokal & global", "Variabel dalam fungsi lokal. Ubah global pakai global, tapi hindari berlebihan.", "x = 10\n\ndef ubah():\n    x = 5\n    print('dalam', x)\n\nubah()\nprint('luar', x)"),
+    quiz("Variabel dalam fungsi?", ["global", "lokal", "konstanta", "module"], 1, "Lokal hanya hidup di dalam fungsi."),
+  ]},
+  { id: "bk-fungsi-rekursi", title: "Rekursi", icon: "Repeat", xp: 170, minutes: 6, steps: [
+    learn("Fungsi memanggil diri", "Rekursi pecah masalah jadi lebih kecil. Wajib base case. Contoh: faktorial.", "def faktorial(n):\n    if n <= 1:\n        return 1\n    return n * faktorial(n - 1)\n\nprint(faktorial(5))"),
+    quiz("Tanpa base case?", ["lebih cepat", "RecursionError", "return 0", "berhenti sendiri"], 1, "Pemanggilan tak berhenti → RecursionError."),
+  ]},
+  { id: "bk-lambda", title: "Lambda, map, filter", icon: "Code2", xp: 160, minutes: 5, steps: [
+    learn("Lambda", "lambda x: ekspresi buat fungsi singkat. map terapkan ke setiap elemen, filter saring yang True.", "angka = [1, 2, 3, 4, 5]\ngenap = list(filter(lambda x: x % 2 == 0, angka))\nkuadrat = list(map(lambda x: x * x, angka))\nprint(genap)\nprint(kuadrat)"),
+    quiz("list(map(lambda x: x*2, [1,2,3]))?", ["[1,2,3]", "[2,4,6]", "[1,4,9]", "[3,6,9]"], 1, "map terapkan ke setiap elemen."),
+  ]},
+]);
+
+const ch11 = mk(CHAPTERS[10], [
+  { id: "bk-file-baca", title: "Baca file", icon: "BookOpen", xp: 150, minutes: 5, steps: [
+    learn("open & with", "open(path, mode): r baca, w timpa, a tambah. with tutup otomatis. read() semua, readlines() per baris.", "from io import StringIO\n\nbuf = StringIO('baris 1\\nbaris 2\\n')\nprint(buf.read())"),
+    quiz("Mode baca?", ["r", "w", "a", "x"], 0, "r = read."),
+  ]},
+  { id: "bk-file-tulis", title: "Tulis file", icon: "BookOpen", xp: 150, minutes: 5, steps: [
+    learn("Mode w & a", "w timpa isi lama, a tambah di akhir. Tutup dengan with atau close.", "from io import StringIO\n\nbuf = StringIO()\nbuf.write('halo\\n')\nbuf.seek(0)\nprint(buf.read())"),
+    quiz("Mode timpa?", ["r", "a", "w", "x"], 2, "w menimpa isi lama."),
+  ]},
+  { id: "bk-json", title: "JSON", icon: "Database", xp: 160, minutes: 6, steps: [
+    learn("json.dumps/loads", "dumps: objek → teks JSON. loads: teks → dict/list. ensure_ascii=False jaga karakter non-ASCII.", "import json\n\nteks = json.dumps({'nama': 'Rani', 'nilai': [80, 90]}, ensure_ascii=False)\ndata = json.loads(teks)\nprint(data['nama'])\nprint(sum(data['nilai']))"),
+    quiz("json.loads hasil?", ["string", "dict/list", "CSV", "HTML"], 1, "JSON object → dict, array → list."),
+  ]},
+  { id: "bk-csv", title: "CSV", icon: "Database", xp: 160, minutes: 6, steps: [
+    learn("csv.DictWriter", "DictWriter tulis baris CSV dari dict. StringIO untuk latihan tanpa file.", "import csv\nfrom io import StringIO\n\nbuf = StringIO()\nw = csv.DictWriter(buf, fieldnames=['nama', 'nilai'])\nw.writeheader()\nw.writerow({'nama': 'Rani', 'nilai': 90})\nprint(buf.getvalue().strip())"),
+    quiz("Tulis header otomatis?", ["writeheader()", "writeline()", "header()", "write()"], 0, "writeheader() tulis baris judul."),
+  ]},
+  { id: "bk-pathlib", title: "pathlib & os", icon: "Package", xp: 150, minutes: 5, steps: [
+    learn("Path lintas OS", "pathlib.Path aman. .name nama file, .suffix ekstensi, .stem nama tanpa ekstensi. Operator / sambung folder.", "from pathlib import Path\n\np = Path('/data/laporan.csv')\nprint(p.name)\nprint(p.suffix)\nprint(p.stem)"),
+    quiz("Path('data/nilai.csv').stem?", ["data", "nilai", "nilai.csv", ".csv"], 1, "stem = nama tanpa ekstensi."),
+  ]},
+  { id: "bk-modul", title: "Modul & pip", icon: "Globe", xp: 140, minutes: 5, steps: [
+    learn("import & pip", "import modul muat semua, from modul import fungsi ambil tertentu, as alias. pip install pasang dari PyPI.", "import math\nprint(math.sqrt(81))\nprint(math.floor(3.9))"),
+    quiz("Perintah pasang paket?", ["pip install", "import", "python", "help"], 0, "pip = package manager."),
+  ]},
+]);
+
+const ch12 = mk(CHAPTERS[11], [
+  { id: "bk-class", title: "Class dasar", icon: "Package", xp: 170, minutes: 6, steps: [
+    learn("Class & objek", "Class = cetakan objek. __init__ saat buat objek, self rujuk ke objek. Method pakai self untuk data.", "class Siswa:\n    def __init__(self, nama):\n        self.nama = nama\n    def sapa(self):\n        return 'Halo ' + self.nama\n\nprint(Siswa('Rani').sapa())"),
+    quiz("self = ?", ["class", "objek", "module", "return"], 1, "self = referensi ke objek."),
+  ]},
+  { id: "bk-inheritance", title: "Inheritance", icon: "GitBranch", xp: 180, minutes: 6, steps: [
+    learn("Mewarisi class induk", "class Anak(Induk) warisi method. Override dengan tulis ulang. super() panggil versi induk.", "class Hewan:\n    def suara(self):\n        return 'Hewan'\n\nclass Kucing(Hewan):\n    def suara(self):\n        return 'Meong'\n\nprint(Kucing().suara())"),
+    quiz("class Kucing(Hewan)?", ["salin file", "warisi Hewan", "Hewan warisi Kucing", "sama"], 1, "Class di kurung = induk."),
+  ]},
+  { id: "bk-exception", title: "Try & except", icon: "GitBranch", xp: 170, minutes: 6, steps: [
+    learn("Menangkap error", "Kode berisiko di try. Jika error, except jalan. Setiap error punya nama: ValueError, ZeroDivisionError, dsb.", "try:\n    print(10 / 0)\nexcept ZeroDivisionError:\n    print('Tidak bisa dibagi nol')"),
+    quiz("int('abc')?", ["ValueError", "TypeError", "ZeroDivisionError", "KeyError"], 0, "Teks non-angka tidak bisa jadi int."),
+  ]},
+  { id: "bk-raise", title: "Raise & finally", icon: "GitBranch", xp: 170, minutes: 6, steps: [
+    learn("raise & finally", "raise lempar error sengaja. finally selalu jalan, cocok untuk pembersihan.", "def cek(n):\n    if n < 0:\n        raise ValueError('Negatif')\n    return n\n\ntry:\n    cek(-1)\nexcept ValueError as e:\n    print(e)\nfinally:\n    print('Selesai')"),
+    quiz("Blok selalu jalan?", ["try", "except", "finally", "raise"], 2, "finally = cleanup yang harus jalan."),
+  ]},
+]);
+
+const ch13 = mk(CHAPTERS[12], [
+  { id: "bk-sort", title: "Sorting", icon: "Calculator", xp: 170, minutes: 6, steps: [
+    learn("sorted & sort", "sorted() → list baru. sort() in-place. reverse=True menurun. Bubble sort tukar tetangga salah urutan.", "print(sorted([3, 1, 2]))\nprint(sorted([3, 1, 2], reverse=True))\n\ndata = [5, 1, 4]\nfor i in range(len(data)):\n    for j in range(len(data) - 1 - i):\n        if data[j] > data[j + 1]:\n            data[j], data[j + 1] = data[j + 1], data[j]\nprint(data)"),
+    quiz("sort vs sorted?", ["sama", "sort ubah asli, sorted return baru", "sorted hanya angka", "sort tidak ada"], 1, "sort in-place, sorted return list baru."),
+  ]},
+  { id: "bk-search", title: "Searching", icon: "Calculator", xp: 170, minutes: 6, steps: [
+    learn("Linear & biner", "Linear periksa satu-satu. Biner hanya data terurut, buang separuh per langkah.", "def cari(data, target):\n    for i, nilai in enumerate(data):\n        if nilai == target:\n            return i\n    return -1\n\nprint(cari([4, 8, 15], 15))\nprint(cari([4, 8, 15], 7))"),
+    quiz("Biner butuh data?", ["acak", "terurut", "string", "genap"], 1, "Tanpa urutan, buang separuh bisa buang target."),
+  ]},
+  { id: "bk-math", title: "Math module", icon: "Calculator", xp: 160, minutes: 5, steps: [
+    learn("Fungsi math", "math: sqrt, floor, ceil, pi, gcd, factorial, isclose (bandingkan float dengan toleransi).", "import math\nprint(math.sqrt(81))\nprint(math.gcd(48, 18))\nprint(math.isclose(0.1 + 0.2, 0.3))"),
+    quiz("math.gcd(48, 18)?", ["6", "12", "18", "48"], 0, "48 dan 18 habis dibagi 6."),
+  ]},
+  { id: "bk-random", title: "Random module", icon: "Calculator", xp: 160, minutes: 5, steps: [
+    learn("random", "randint(a, b) inklusif, choice pilih satu, shuffle acak list. random.seed buat urutan bisa diulang.", "import random\nrandom.seed(42)\nprint(random.randint(1, 10))\nprint([random.randint(1, 6) for _ in range(3)])"),
+    quiz("randint(1,10)?", ["1-9", "1-10", "0-10", "0-9"], 1, "randint inklusif."),
+  ]},
+  { id: "bk-datetime", title: "Datetime", icon: "Package", xp: 160, minutes: 6, steps: [
+    learn("Tanggal & selisih", "date/datetime wakili tanggal. Kurang dua tanggal = timedelta (.days). strftime ke teks, strptime baca teks.", "from datetime import date, datetime\n\nmulai = date(2026, 1, 1)\nakhir = date(2026, 1, 31)\nprint((akhir - mulai).days)\nprint(akhir.strftime('%d-%m-%Y'))"),
+    quiz("%Y artinya?", ["hari", "tahun 4 digit", "bulan", "menit"], 1, "%Y = tahun 4 digit."),
+  ]},
+]);
+
+const ch14 = mk(CHAPTERS[13], [
+  { id: "bk-regex", title: "Regex dasar", icon: "Type", xp: 180, minutes: 6, steps: [
+    learn("Pola teks", "re.findall ambil semua cocok. re.sub ganti. [0-9] digit, [a-z] huruf, + satu atau lebih.", "import re\n\nteks = 'file_2024.csv dan file_2025.csv'\nprint(re.findall('[0-9]{4}', teks))\nprint(re.sub('file_', 'data_', teks))"),
+    quiz("re.findall('[0-9]+', 'a12b345')?", ["['12','345']", "['a12','b345']", "12", "['12345']"], 0, "[0-9]+ = satu atau lebih digit."),
+  ]},
+  { id: "bk-regex-lanjut", title: "Regex lanjutan", icon: "Type", xp: 190, minutes: 7, steps: [
+    learn("Grup & validasi", "Kurung = grup. re.fullmatch wajib cocok seluruh teks. [.] = titik literal.", "import re\n\npola = r'([a-z]+)@([a-z]+)[.]com'\nhasil = re.fullmatch(pola, 'rani@pyfun.com')\nprint(hasil.group(1) if hasil else 'tidak cocok')"),
+    quiz("match vs fullmatch?", ["sama", "fullmatch wajib cocok seluruh", "match hanya angka", "fullmatch lambat"], 1, "fullmatch wajib cocok seluruh string."),
+  ]},
+  { id: "bk-collections", title: "Counter & defaultdict", icon: "Database", xp: 180, minutes: 6, steps: [
+    learn("Hitung & kelompokkan", "Counter hitung frekuensi, most_common(n). defaultdict(list) otomatis list saat kunci baru.", "from collections import Counter, defaultdict\n\nhitung = Counter('apel jeruk apel'.split())\nprint(hitung.most_common(1))\n\nkelompok = defaultdict(list)\nfor buah in ['apel', 'anggur']:\n    kelompok[buah[0]].append(buah)\nprint(dict(kelompok))"),
+    quiz("Counter(['a','a','b'])['a']?", ["1", "2", "3", "Error"], 1, "Hitung kemunculan 'a' = 2."),
+  ]},
+  { id: "bk-itertools", title: "Itertools", icon: "Calculator", xp: 180, minutes: 6, steps: [
+    learn("Kombinasi & produk", "combinations r elemen tanpa urutan. product pasangan dari beberapa kumpulan. chain sambung iterable.", "from itertools import combinations, product, chain\n\nprint(list(combinations([1, 2, 3], 2)))\nprint(list(product('AB', repeat=2)))\nprint(list(chain([1, 2], [3, 4])))"),
+    quiz("combinations vs permutations?", ["sama", "permutasi perhatikan urutan", "kombinasi hanya angka", "permutasi tidak ada"], 1, "Permutasi bedakan urutan, kombinasi tidak."),
+  ]},
+  { id: "bk-enumerate-zip", title: "enumerate & zip", icon: "Repeat", xp: 160, minutes: 5, steps: [
+    learn("Indeks & pasangan", "enumerate beri indeks+nilai. zip gabung dua iterable. dict(zip(k, v)) buat dictionary.", "for i, huruf in enumerate('abc'):\n    print(i, huruf)\nprint(list(zip([1, 2], ['a', 'b'])))"),
+    quiz("list(enumerate(['a','b']))?", ["[('a',0),('b',1)]", "[(0,'a'),(1,'b')]", "['a','b']", "[0,1]"], 1, "enumerate = pasangan (indeks, nilai)."),
+  ]},
+  { id: "bk-copy", title: "Copy & mutability", icon: "Package", xp: 170, minutes: 6, steps: [
+    learn("Referensi & salinan", "List mutable. copy = L hanya referensi. L[:] salinan dangkal. copy.deepcopy untuk list bersarang.", "L = [1, 2, 3]\nsalinan = L[:]\nsalinan[0] = 9\nprint(L)\nprint(salinan)"),
+    quiz("Salin list tanpa share?", ["copy = L", "copy = L[:]", "copy = L + 0", "copy = list"], 1, "L[:] buat list baru dengan isi sama."),
+  ]},
+  { id: "bk-debug", title: "Debugging", icon: "Check", xp: 150, minutes: 5, steps: [
+    learn("Strategi debug", "Print di titik curiga, periksa nilai di shell, baca error dari bawah ke atas. Bagi masalah jadi langkah kecil.", "def rata_rata(data):\n    print('data:', data)\n    print('panjang:', len(data))\n    return sum(data) / len(data)\n\nprint(rata_rata([10, 20, 30]))"),
+    quiz("Cek variabel saat debug?", ["hapus variabel", "print(variabel)", "restart", "ganti nama"], 1, "print tampilkan nilai saat itu."),
+  ]},
+  { id: "bk-tkinter", title: "Tkinter dasar", icon: "Globe", xp: 170, minutes: 6, steps: [
+    learn("Jendela, label, tombol", "Alur: from tkinter import *, root = Tk(), buat widget, grid(), mainloop(). mainloop tunggu event.", "from tkinter import *\n\nroot = Tk()\nlabel = Label(text='Halo')\nlabel.grid(row=0, column=0)\nmainloop()"),
+    quiz("Fungsi event loop Tkinter?", ["Tk()", "mainloop()", "grid()", "Label()"], 1, "mainloop tunggu event sampai jendela ditutup."),
+  ]},
+]);
+
+// ============================================================
+// PYTHON PRO
+// ============================================================
+const ch15 = mk(CHAPTERS[14], [
+  { id: "pro-generator", title: "Generator & yield", icon: "Repeat", xp: 220, minutes: 7, steps: [
+    learn("yield = generator", "Fungsi dengan yield jadi generator. Nilai diproduksi satu per satu, hemat memori untuk data besar.", "def hitung_mundur(n):\n    while n > 0:\n        yield n\n        n -= 1\n\nfor x in hitung_mundur(3):\n    print(x)"),
+    learn("Generator expression", "Mirip list comprehension, tapi pakai (). Cocok untuk sum, any, all, max karena dipakai sekali.", "total = sum(x*x for x in range(1000000))\nprint(total)"),
+    quiz("Fungsi dengan yield return?", ["list", "tuple", "generator", "None"], 2, "yield bikin fungsi jadi generator object."),
+  ]},
+  { id: "pro-decorator", title: "Decorator", icon: "Code2", xp: 230, minutes: 7, steps: [
+    learn("Fungsi bungkus fungsi", "Decorator terima fungsi, kembalikan fungsi baru dengan perilaku tambahan. Dipasang dengan @nama.", "import functools\n\ndef catat(fn):\n    @functools.wraps(fn)\n    def pembungkus(*args, **kwargs):\n        print('memanggil', fn.__name__)\n        return fn(*args, **kwargs)\n    return pembungkus\n\n@catat\ndef tambah(a, b):\n    return a + b\n\nprint(tambah(2, 3))"),
+    quiz("@decorator di atas def f() setara?", ["f = decorator", "f = decorator(f)", "decorator = f", "f(decorator)"], 1, "@decorator ganti f dengan decorator(f)."),
+  ]},
+  { id: "pro-context-manager", title: "Context manager", icon: "Package", xp: 210, minutes: 6, steps: [
+    learn("with = manajemen resource", "Context manager jamin pembersihan meski error. Class dengan __enter__/__exit__, atau contextlib.contextmanager.", "from contextlib import contextmanager\n\n@contextmanager\ndef sesi(nama):\n    print('buka', nama)\n    try:\n        yield nama\n    finally:\n        print('tutup', nama)\n\nwith sesi('db') as s:\n    print('pakai', s)"),
+    quiz("Method wajib context manager class?", ["__init__ __str__", "__enter__ __exit__", "__start__ __stop__", "__open__ __close__"], 1, "with panggil __enter__ dan __exit__."),
+  ]},
+  { id: "pro-type-hint", title: "Type hints", icon: "Braces", xp: 200, minutes: 6, steps: [
+    learn("Anotasi tipe", "Type hint tidak ubah runtime, tapi bantu editor & mypy. Gunakan list[int], dict[str, int], Optional, | None.", "from typing import Optional\n\ndef rata(data: list[float]) -> float:\n    return sum(data) / len(data)\n\ndef cari(nama: str) -> Optional[int]:\n    return len(nama) or None\n\nprint(rata([1.0, 2.0, 3.0]))"),
+    quiz("x: int = 5 runtime berfungsi?", ["casting", "cek ketat", "petunjuk editor/al", "error jika bukan int"], 2, "Python tidak paksa tipe runtime."),
+  ]},
+  { id: "pro-magic", title: "Magic methods", icon: "Sparkles", xp: 220, minutes: 7, steps: [
+    learn("Custom perilaku objek", "__str__ untuk print, __repr__ untuk debug, __eq__ untuk ==, __add__ untuk +, __len__ untuk len().", "class Uang:\n    def __init__(self, nilai):\n        self.nilai = nilai\n    def __add__(self, other):\n        return Uang(self.nilai + other.nilai)\n    def __str__(self):\n        return f'Rp{self.nilai:,}'\n\nprint(Uang(15000) + Uang(7500))"),
+    quiz("print() panggil?", ["__repr__", "__str__", "__print__", "__eq__"], 1, "print pakai __str__."),
+  ]},
+  { id: "pro-property", title: "Property & setter", icon: "Lock", xp: 210, minutes: 6, steps: [
+    learn("Akses seperti variabel", "@property buat method jadi atribut. @nama.setter untuk validasi saat diubah.", "class Suhu:\n    def __init__(self, c):\n        self._c = c\n    @property\n    def celsius(self):\n        return self._c\n    @celsius.setter\n    def celsius(self, v):\n        if v < -273:\n            raise ValueError('Di bawah nol absolut')\n        self._c = v\n\ns = Suhu(30)\ns.celsius = 35\nprint(s.celsius)"),
+    quiz("@property berguna untuk?", ["sembunyikan method", "akses atribut dengan logika tambahan", "buat class", "hapus atribut"], 1, "Property beri validasi/perhitungan saat atribut dibaca/ditulis."),
+  ]},
+  { id: "pro-dataclass", title: "Dataclass", icon: "Package", xp: 200, minutes: 6, steps: [
+    learn("Kurangi boilerplate", "@dataclass buat __init__, __repr__, __eq__ otomatis. field(default_factory=list) hindari mutable default.", "from dataclasses import dataclass, field\n\n@dataclass\nclass Siswa:\n    nama: str\n    nilai: list[int] = field(default_factory=list)\n\ns = Siswa('Rani')\ns.nilai.append(80)\nprint(s)"),
+    quiz("field(default_factory=list) kenapa?", ["lebih cepat", "hindari list dipakai bersama", "buat immutable", "type hint"], 1, "Default mutable dipakai bersama semua instance tanpa default_factory."),
+  ]},
+  { id: "pro-class-static", title: "Class & static method", icon: "Code2", xp: 200, minutes: 6, steps: [
+    learn("3 jenis method", "Instance method pakai self. @classmethod pakai cls (konstruktor alternatif). @staticmethod tidak terima self/cls.", "class Tanggal:\n    def __init__(self, hari):\n        self.hari = hari\n    @classmethod\n    def dari_teks(cls, teks):\n        return cls(int(teks))\n    @staticmethod\n    def valid(hari):\n        return 1 <= hari <= 31\n\nprint(Tanggal.dari_teks('17').hari)\nprint(Tanggal.valid(40))"),
+    quiz("@classmethod argumen pertama?", ["self", "cls", "instance", "module"], 1, "classmethod terima class (cls)."),
+  ]},
+  { id: "pro-sort-key", title: "Sorting key", icon: "Calculator", xp: 190, minutes: 6, steps: [
+    learn("Urutkan custom", "sort/sorted terima key fungsi. Bisa operator.itemgetter/attrgetter. reverse=True membalik.", "data = [('Ani', 80), ('Budi', 95), ('Cici', 70)]\nprint(sorted(data, key=lambda x: x[1], reverse=True))\n\nkata = ['apel', 'kiwi', 'jeruk']\nprint(sorted(kata, key=len))"),
+    quiz("sorted(['bb','a','ccc'], key=len)?", ["['a','bb','ccc']", "['ccc','bb','a']", "['a','ccc','bb']", "['bb','a','ccc']"], 0, "Urut panjang: 1, 2, 3."),
+  ]},
+  { id: "pro-walrus", title: "Walrus operator", icon: "Code2", xp: 180, minutes: 5, steps: [
+    learn(":= assign + pakai", "Walrus := beri nilai di dalam ekspresi. Berguna untuk while dan comprehension.", "data = [1, 2, 3, 4, 5]\nif (n := len(data)) > 3:\n    print('panjang', n)\n\nganjil = [y for x in range(10) if (y := x * 2) % 3 == 0]\nprint(ganjil)"),
+    quiz(":= untuk?", ["perbandingan", "assign dalam ekspresi", "bitwise and", "hapus variabel"], 1, "Walrus assign + kembalikan nilai."),
+  ]},
+  { id: "pro-match-case", title: "match-case", icon: "GitBranch", xp: 200, minutes: 6, steps: [
+    learn("Pattern matching 3.10+", "match-case periksa pola, bukan hanya nilai. Bisa literal, tuple, list, class, guard if. case _ = default.", "def kategori(x):\n    match x:\n        case 0:\n            return 'nol'\n        case int(n) if n > 0:\n            return 'positif'\n        case int(n):\n            return 'negatif'\n        case _:\n            return 'lainnya'\n\nprint(kategori(5), kategori(-2), kategori(0))"),
+    quiz("case _ = ?", ["komentar", "wildcard/default", "variabel", "penutup"], 1, "case _ cocok apa saja = default."),
+  ]},
+  { id: "pro-comp-lanjut", title: "Comprehension lanjutan", icon: "List", xp: 200, minutes: 6, steps: [
+    learn("Dict, set, bersarang", "{k: v for} buat dict, {x for} buat set, dua for bersarang buat matriks.", "kata = ['apel', 'kiwi', 'jeruk']\nprint({k: len(k) for k in kata})\nprint({x*x for x in range(5)})\nprint([[i*j for j in range(3)] for i in range(2)])"),
+    quiz("{x: x*x for x in range(3)}?", ["[0,1,4]", "{0:0,1:1,2:4}", "{0,1,4}", "(0,1,4)"], 1, "kunci:nilai → dict."),
+  ]},
+  { id: "pro-fstring-lanjut", title: "f-string lanjutan", icon: "Type", xp: 190, minutes: 6, steps: [
+    learn("Format angka & padding", ":, = ribuan, :.2% = persen, :>10 = rata kanan, :^20 = rata tengah, :04d = padding.", "x = 1234567\ny = 0.856\nprint(f'{x:,}')\nprint(f'{y:.1%}')\nprint(f'{42:>10}')\nprint(f'{42:04d}')"),
+    quiz("f'{0.1234:.1%}'?", ["0.1", "0.12", "12.3%", "1%"], 2, ":.1% = persen 1 desimal."),
+  ]},
+  { id: "pro-iter", title: "Iterator & iter", icon: "Repeat", xp: 200, minutes: 6, steps: [
+    learn("Protokol iterasi", "Iterable punya __iter__ return iterator. Iterator punya __next__. for pakai keduanya.", "class Hitung:\n    def __init__(self, n):\n        self.n = n\n        self.i = 0\n    def __iter__(self):\n        return self\n    def __next__(self):\n        if self.i >= self.n:\n            raise StopIteration\n        self.i += 1\n        return self.i\n\nprint(list(Hitung(3)))"),
+    quiz("Iterasi habis lempar?", ["__end__", "__stop__", "StopIteration", "__iter__"], 2, "StopIteration saat tidak ada elemen."),
+  ]},
+  { id: "pro-packaging", title: "venv & struktur", icon: "Package", xp: 210, minutes: 6, steps: [
+    learn("Virtual environment", "venv isolasi dependensi. Aktifkan source .venv/bin/activate (Linux/Mac) atau .venv\\Scripts\\activate (Win). pip freeze > requirements.txt.", "# python -m venv .venv\n# source .venv/bin/activate\n# pip install requests\n# pip freeze > requirements.txt\nprint('siap')"),
+    quiz("Tujuan venv?", ["file cepat", "isolasi dependensi", "hapus Python", "ganti pip"], 1, "venv cegah konflik versi antar project."),
+  ]},
+]);
+
+// ============================================================
+// ALGORITMA GACOR
+// ============================================================
+const ch16 = mk(CHAPTERS[15], [
+  { id: "algo-big-o", title: "Big O", icon: "Calculator", xp: 220, minutes: 7, steps: [
+    learn("Pertumbuhan, bukan detik", "Big O gambarkan pertumbuhan waktu vs input. O(1) konstan, O(log n), O(n), O(n log n), O(n^2) kuadratik.", "# O(n) satu loop\nprint(sum(range(100)))\n\n# O(n^2) dua loop bersarang\nfor i in range(100):\n    for j in range(100):\n        pass"),
+    quiz("Dua loop n×n = ?", ["O(1)", "O(n)", "O(n log n)", "O(n^2)"], 3, "n × n = n^2 operasi."),
+  ]},
+  { id: "algo-two-pointers", title: "Two pointers", icon: "Calculator", xp: 230, minutes: 7, steps: [
+    learn("Dua penunjuk", "Two pointers kurangi O(n^2) jadi O(n). Cocok untuk cari pasangan jumlah target di data terurut.", "def cari_pasangan(data, target):\n    kiri, kanan = 0, len(data) - 1\n    while kiri < kanan:\n        total = data[kiri] + data[kanan]\n        if total == target:\n            return (data[kiri], data[kanan])\n        if total < target:\n            kiri += 1\n        else:\n            kanan -= 1\n    return None\n\nprint(cari_pasangan([1, 2, 3, 4, 6], 6))"),
+    quiz("Two pointers kompleksitas?", ["O(1)", "O(log n)", "O(n)", "O(n^2)"], 2, "Tiap pointer bergerak max n langkah → O(n)."),
+  ]},
+  { id: "algo-sliding-window", title: "Sliding window", icon: "Calculator", xp: 230, minutes: 7, steps: [
+    learn("Jendela bergeser", "Sliding window jaga total dalam jendela, tambah baru buang lama. Cocok untuk cari subarray dengan sifat tertentu.", "def max_sum(data, k):\n    if len(data) < k:\n        return None\n    total = sum(data[:k])\n    terbaik = total\n    for i in range(k, len(data)):\n        total += data[i] - data[i - k]\n        terbaik = max(terbaik, total)\n    return terbaik\n\nprint(max_sum([2, 1, 5, 1, 3, 2], 3))"),
+    quiz("Keunggulan vs dua loop?", ["lebih sulit", "ubah O(n^2) ke O(n)", "tidak bisa di list", "hanya string"], 1, "Manfaatkan hasil sebelumnya, satu putaran cukup."),
+  ]},
+  { id: "algo-hashmap", title: "Hash map", icon: "Database", xp: 220, minutes: 7, steps: [
+    learn("Cari O(1) dengan set/dict", "Dict/set lookup rata-rata O(1). Tukar loop cari O(n) jadi O(1) per cek → kadang O(n^2) jadi O(n).", "def ada_duplikat(data):\n    terlihat = set()\n    for x in data:\n        if x in terlihat:\n            return True\n        terlihat.add(x)\n    return False\n\nprint(ada_duplikat([1, 2, 3, 2]))\nprint(ada_duplikat([1, 2, 3]))"),
+    quiz("x in set(data)?", ["O(1)", "O(n)", "O(n log n)", "O(n^2)"], 0, "Set pakai hashing → lookup konstan."),
+  ]},
+  { id: "algo-stack-queue", title: "Stack & queue", icon: "Package", xp: 220, minutes: 7, steps: [
+    learn("LIFO vs FIFO", "Stack LIFO pakai list append/pop di ujung. Queue FIFO pakai collections.deque dengan popleft.", "from collections import deque\n\nstack = []\nstack.append(1)\nstack.append(2)\nprint(stack.pop())\n\nq = deque([1, 2, 3])\nq.append(4)\nprint(q.popleft())"),
+    quiz("FIFO cocok pakai?", ["list pop()", "deque popleft()", "set", "tuple"], 1, "deque O(1) pop di kiri, list.pop(0) O(n)."),
+  ]},
+  { id: "algo-linked-list", title: "Linked list", icon: "Package", xp: 240, minutes: 8, steps: [
+    learn("Rantai node", "Node simpan nilai + rujukan next. Insert awal O(1), cari O(n).", "class Node:\n    def __init__(self, nilai):\n        self.nilai = nilai\n        self.next = None\n\ndef cetak(head):\n    while head:\n        print(head.nilai)\n        head = head.next\n\nhead = Node(1)\nhead.next = Node(2)\nhead.next.next = Node(3)\ncetak(head)"),
+    quiz("Insert awal linked list?", ["O(1)", "O(log n)", "O(n)", "O(n^2)"], 0, "Cukup ubah head ke node baru."),
+  ]},
+  { id: "algo-bst", title: "Binary search tree", icon: "GitBranch", xp: 250, minutes: 8, steps: [
+    learn("BST", "BST simpan nilai kecil di kiri, besar di kanan. Cari rata-rata O(log n) jika seimbang.", "class Node:\n    def __init__(self, nilai):\n        self.nilai = nilai\n        self.kiri = None\n        self.kanan = None\n\ndef sisip(root, nilai):\n    if root is None:\n        return Node(nilai)\n    if nilai < root.nilai:\n        root.kiri = sisip(root.kiri, nilai)\n    else:\n        root.kanan = sisip(root.kanan, nilai)\n    return root\n\nroot = None\nfor x in [5, 3, 8, 1, 4]:\n    root = sisip(root, x)\nprint(root.nilai, root.kiri.nilai, root.kanan.nilai)"),
+    quiz("BST nilai lebih kecil disimpan di?", ["kiri", "kanan", "root", "tidak disimpan"], 0, "Kiri lebih kecil, kanan lebih besar."),
+  ]},
+  { id: "algo-dp", title: "Dynamic programming", icon: "Calculator", xp: 250, minutes: 8, steps: [
+    learn("Simpan hasil subproblem", "DP pecah masalah, simpan hasil subproblem. Fib DP O(n), rekursi naif O(2^n).", "def fib(n):\n    if n < 2:\n        return n\n    dp = [0, 1]\n    for i in range(2, n + 1):\n        dp.append(dp[i-1] + dp[i-2])\n    return dp[n]\n\nprint(fib(30))"),
+    quiz("Ide utama DP?", ["acak", "simpan hasil subproblem", "urutkan", "bagi file"], 1, "Overlapping subproblem disimpan di tabel."),
+  ]},
+  { id: "algo-memo", title: "Rekursi + memo", icon: "Repeat", xp: 230, minutes: 7, steps: [
+    learn("lru_cache", "lru_cache simpan hasil pemanggilan dengan argumen sama. Satu decorator ubah rekursi eksponensial jadi linear.", "from functools import lru_cache\n\n@lru_cache(maxsize=None)\ndef fib(n):\n    if n < 2:\n        return n\n    return fib(n-1) + fib(n-2)\n\nprint(fib(50))"),
+    quiz("Manfaat lru_cache?", ["perlambat", "hindari hitung ulang", "kode panjang", "ubah hasil"], 1, "Hasil argumen sama dari cache."),
+  ]},
+]);
+
+// ===========================================================
+
+export const BUNDLED: Lesson[] = [...ch1, ...ch2, ...ch3, ...ch4, ...ch5, ...ch6, ...ch7, ...ch8, ...ch9, ...ch10, ...ch11, ...ch12, ...ch13, ...ch14, ...ch15, ...ch16];
 
 /** Bentuk baris di tabel Supabase (kolom camelCase diubah ke snake_case). */
 export type LessonRow = {
