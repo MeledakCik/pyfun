@@ -10,3 +10,5 @@
 *.tsbuildinfo
 next-env.d.ts
 docs.zip
+buat_csv.py
+materi_pyfun.csv
