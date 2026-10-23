@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { Crown, Loader2, RefreshCw, Trophy } from "lucide-react";
 import { useGame } from "@/lib/store";
 import { nextRank, rankOf } from "@/lib/game";
-import { fetchRankBoard, syncRank, type RankBoard, type RankEntry } from "@/lib/rank";
+import { completedLessonIds, loadRank, type RankBoard, type RankEntry } from "@/lib/rank";
+import { GoogleLogin } from "@/components/GoogleLogin";
 
 function Podium({ entries }: { entries: RankEntry[] }) {
   if (entries.length === 0) return null;
@@ -45,9 +46,7 @@ export default function Ranks() {
     setLoading(true);
     setError("");
 
-    const request = g.name ? syncRank(g.name, []) : fetchRankBoard();
-
-    request
+    loadRank(completedLessonIds(g.progress))
       .then((data) => {
         if (active) setBoard(data);
       })
@@ -62,7 +61,7 @@ export default function Ranks() {
     return () => {
       active = false;
     };
-  }, [ready, g.name, g.xp, reloadKey]);
+  }, [ready, g.progress, reloadKey]);
 
   const me = board?.entries.find((entry) => entry.me) ?? null;
   const leagueXp = me?.xp ?? g.xp;
@@ -81,6 +80,8 @@ export default function Ranks() {
                 peringkat <span style={{ color: league.color }}>{league.name}</span>
                 {next ? ` · ${Math.max(0, next.min - leagueXp)} XP lagi ke ${next.name}` : ""}.
               </>
+            ) : board && !board.authenticated ? (
+              "Login dengan Google untuk masuk papan peringkat."
             ) : board ? (
               "Selesaikan materi resmi untuk masuk papan peringkat."
             ) : (
@@ -98,6 +99,17 @@ export default function Ranks() {
           Muat ulang
         </button>
       </div>
+
+      {board && !board.authenticated && (
+        <div className="card grid gap-3 border-lime/40 p-5">
+          <p className="font-bold">Kamu belum login</p>
+          <p className="text-sm text-dim">
+            Papan peringkat hanya mencatat akun Google. Tanpa login, XP-mu tetap tersimpan di perangkat ini
+            tetapi tidak masuk rank. Setelah login, materi resmi yang sudah kamu selesaikan ikut tercatat otomatis.
+          </p>
+          <GoogleLogin />
+        </div>
+      )}
 
       {error ? (
         <div className="card border-danger/40 p-5" role="alert">
@@ -120,9 +132,7 @@ export default function Ranks() {
           <Trophy size={34} className="mx-auto text-lime" aria-hidden />
           <p className="mt-3 font-bold">Belum ada peserta</p>
           <p className="mt-1 text-sm text-dim">
-            {g.name
-              ? "Selesaikan satu materi resmi untuk masuk papan peringkat. Papan ini hanya berisi pemain asli."
-              : "Isi nama di halaman awal, lalu selesaikan satu materi resmi untuk masuk papan peringkat."}
+            Login dengan Google lalu selesaikan satu materi resmi untuk jadi yang pertama di papan peringkat.
           </p>
         </div>
       ) : board ? (
@@ -152,9 +162,8 @@ export default function Ranks() {
       ) : null}
 
       <p className="text-xs text-faint">
-        XP peringkat dihitung server dari materi resmi yang kamu selesaikan. Materi buatan sendiri
-        tidak menambah XP peringkat. Mengulang materi yang sudah tercatat juga tidak menambah XP
-        lagi; materi lama yang belum tercatat bisa dimasukkan dengan menyelesaikannya sekali lagi.
+        Hanya akun Google yang masuk papan peringkat. XP dihitung server dari materi resmi yang kamu
+        selesaikan; materi buatan sendiri dan pengulangan materi yang sudah tercatat tidak menambah XP.
       </p>
     </div>
   );

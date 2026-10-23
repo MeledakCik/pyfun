@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Compass, LogOut, Terminal, Trophy, User } from "lucide-react";
 import { useGame } from "@/lib/store";
 import { rankOf } from "@/lib/game";
@@ -10,6 +10,7 @@ import SideRail from "./SideRail";
 import { GoogleLogin } from "@/components/GoogleLogin";
 import { CustomNameModal } from "@/components/CustomNameModal";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { completedLessonIds, syncCompleted } from "@/lib/rank";
 
 const NAV = [
   { href: "/quest", label: "Quest", Icon: Compass },
@@ -29,6 +30,20 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (ready && !g.name) router.replace("/");
   }, [ready, g.name, router]);
+
+  // Setelah login Google, kirim materi resmi yang sudah selesai di perangkat ini
+  // (termasuk yang dikerjakan saat masih tamu). Server mengabaikan yang sudah tercatat.
+  const progressRef = useRef(g.progress);
+  progressRef.current = g.progress;
+  const backfilledFor = useRef<string | null>(null);
+  const sessionUserId = sessionUser?.id ?? null;
+  useEffect(() => {
+    if (!ready || !sessionUserId || backfilledFor.current === sessionUserId) return;
+    backfilledFor.current = sessionUserId;
+    void syncCompleted(completedLessonIds(progressRef.current)).catch(() => {
+      backfilledFor.current = null; // coba lagi pada kunjungan berikutnya
+    });
+  }, [ready, sessionUserId]);
 
   useEffect(() => {
     const client = supabaseBrowser;

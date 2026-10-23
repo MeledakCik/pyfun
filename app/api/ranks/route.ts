@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUNDLED, fetchSupabaseLessons } from "@/lib/lessons";
@@ -12,7 +12,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const LESSON_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_NAME = 20;
 const MAX_LESSONS = 50;
 const MAX_LESSON_XP = 2000;
@@ -42,6 +41,11 @@ type Board = {
   entries: BoardEntry[];
   total: number;
   configured: true;
+};
+
+type SessionUser = {
+  id: string;
+  user_metadata?: Record<string, unknown> | null;
 };
 
 type PlayerRow = {
@@ -117,158 +121,120 @@ async function readBoard(db: SupabaseClient, playerId: string | null): Promise<B
   return toBoard((data ?? []) as RankRow[]);
 }
 
-async function getSessionUser() {
+async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
-  return user;
+  return { id: user.id, user_metadata: user.user_metadata };
 }
 
-async function getCurrentPlayer(
-  db: SupabaseClient,
-  authUserId: string | null,
-  playerId: string | null,
-): Promise<PlayerRow | null> {
-  if (authUserId) {
-    const { data, error } = await db
-      .from("pyfun_rank_players")
-      .select("player_id, name, custom_name, auth_user_id, secret_hash, xp")
-      .eq("auth_user_id", authUserId)
-      .limit(1)
-      .maybeSingle();
-    if (!error && data) return data as PlayerRow;
-  }
-  if (playerId) {
-    const { data, error } = await db
-      .from("pyfun_rank_players")
-      .select("player_id, name, custom_name, auth_user_id, secret_hash, xp")
-      .eq("player_id", playerId)
-      .limit(1)
-      .maybeSingle();
-    if (!error && data) return data as PlayerRow;
-  }
-  return null;
+/** Nama bawaan dari profil Google (bukan email), dipakai saat baris pertama dibuat. */
+function googleName(user: SessionUser): string | null {
+  const meta = user.user_metadata ?? {};
+  return normalizeName(meta.full_name) ?? normalizeName(meta.name) ?? null;
 }
+
+const PLAYER_COLUMNS = "player_id, name, custom_name, auth_user_id, secret_hash, xp";
 
 /**
- * Sinkronisasi pemain tanpa RPC `pyfun_rank_sync`.
- *
- * Fungsi SQL itu bisa punya dua overload lama di Supabase sehingga PostgREST
- * menolak semua panggilan (PGRST203). Operasi tabel langsung di bawah tetap
- * memakai service role dan aturan yang sama: XP dihitung dari katalog resmi,
- * satu materi hanya dihitung sekali, dan secret perangkat diverifikasi.
+ * Pemain di papan peringkat = akun Google. Satu akun, satu baris, ditemukan
+ * lewat `auth_user_id` dari sesi server. Tanpa login tidak ada baris sama sekali.
  */
-async function syncPlayer(
-  db: SupabaseClient,
-  input: {
-    playerId: string;
-    authUserId: string | null;
-    secretHash: string;
-    name: string;
-    lessons: Array<{ id: string; xp: number }>;
-  },
-): Promise<SyncResult> {
-  let player = await getCurrentPlayer(db, input.authUserId, input.playerId);
-
-  if (!player) {
-    const { data, error } = await db
-      .from("pyfun_rank_players")
-      .insert({
-        player_id: input.playerId,
-        auth_user_id: input.authUserId,
-        name: input.name,
-        secret_hash: input.secretHash,
-        xp: 0,
-      })
-      .select("player_id, name, custom_name, auth_user_id, secret_hash, xp")
-      .single();
-
-    if (error) {
-      // Bisa terjadi race saat dua request membuat pemain yang sama.
-      const existing = await getCurrentPlayer(db, input.authUserId, input.playerId);
-      if (!existing) throw error;
-      player = existing;
-    } else {
-      player = data as PlayerRow;
-    }
-  }
-
-  // Jangan campur progres dua akun yang berbeda di perangkat yang sama.
-  if (input.authUserId && player.auth_user_id && player.auth_user_id !== input.authUserId) {
-    return { ok: false, reason: "invalid_player" };
-  }
-
-  // Sesi login adalah bukti kepemilikan yang lebih kuat daripada secret
-  // perangkat. Ini juga membuat akun Google bisa dipakai di beberapa device.
-  const ownsBySession = Boolean(input.authUserId && player.auth_user_id === input.authUserId);
-  if (!ownsBySession && player.secret_hash !== input.secretHash) {
-    return { ok: false, reason: "invalid_secret" };
-  }
-
-  const { error: updateError } = await db
+async function getPlayerByAuth(db: SupabaseClient, authUserId: string): Promise<PlayerRow | null> {
+  const { data, error } = await db
     .from("pyfun_rank_players")
-    .update({
-      name: input.name,
-      auth_user_id: player.auth_user_id ?? input.authUserId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("player_id", player.player_id);
-  if (updateError) throw updateError;
-
-  let gained = 0;
-  if (input.lessons.length > 0) {
-    const rows = input.lessons.map((lesson) => ({
-      player_id: player!.player_id,
-      lesson_id: lesson.id,
-      xp: lesson.xp,
-    }));
-    const { data: inserted, error: insertError } = await db
-      .from("pyfun_rank_completions")
-      .upsert(rows, { onConflict: "player_id,lesson_id", ignoreDuplicates: true })
-      .select("xp");
-    if (insertError) throw insertError;
-    gained = (inserted ?? []).reduce((sum, row) => sum + Number(row.xp ?? 0), 0);
-  }
-
-  if (gained > 0) {
-    // Hitung ulang dari completion agar XP tetap konsisten kalau sebelumnya
-    // ada baris lama yang tidak sinkron.
-    const { data: completions, error: sumError } = await db
-      .from("pyfun_rank_completions")
-      .select("xp")
-      .eq("player_id", player.player_id);
-    if (sumError) throw sumError;
-    const xp = (completions ?? []).reduce((sum, row) => sum + Number(row.xp ?? 0), 0);
-
-    const { data: updated, error: xpError } = await db
-      .from("pyfun_rank_players")
-      .update({ xp, updated_at: new Date().toISOString() })
-      .eq("player_id", player.player_id)
-      .select("xp")
-      .single();
-    if (xpError) throw xpError;
-    return { ok: true, xp: Number(updated.xp), gained };
-  }
-
-  return { ok: true, xp: Number(player.xp), gained: 0 };
+    .select(PLAYER_COLUMNS)
+    .eq("auth_user_id", authUserId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PlayerRow | null) ?? null;
 }
+
+/** Ambil atau buat baris pemain untuk akun ini. Aman dipanggil paralel. */
+async function ensurePlayer(db: SupabaseClient, user: SessionUser, preferredName: string | null): Promise<PlayerRow> {
+  const existing = await getPlayerByAuth(db, user.id);
+  if (existing) return existing;
+
+  const name = preferredName ?? googleName(user) ?? "Pelajar";
+  const { data, error } = await db
+    .from("pyfun_rank_players")
+    .insert({
+      player_id: randomUUID(),
+      auth_user_id: user.id,
+      name,
+      // Kolom ini warisan sistem perangkat; akun login tidak memakainya.
+      secret_hash: createHash("sha256").update(`auth:${user.id}`, "utf8").digest("hex"),
+      xp: 0,
+    })
+    .select(PLAYER_COLUMNS)
+    .single();
+
+  if (error) {
+    // Dua request bersamaan membuat baris yang sama: unique index auth_user_id menolak salah satunya.
+    const raced = await getPlayerByAuth(db, user.id);
+    if (!raced) throw error;
+    return raced;
+  }
+  return data as PlayerRow;
+}
+
+/** Tambahkan materi resmi yang belum tercatat, lalu hitung ulang XP dari tabel completion. */
+async function recordCompletions(
+  db: SupabaseClient,
+  player: PlayerRow,
+  lessons: Array<{ id: string; xp: number }>,
+): Promise<{ xp: number; gained: number }> {
+  if (lessons.length === 0) return { xp: Number(player.xp), gained: 0 };
+
+  const rows = lessons.map((lesson) => ({ player_id: player.player_id, lesson_id: lesson.id, xp: lesson.xp }));
+  const { data: inserted, error: insertError } = await db
+    .from("pyfun_rank_completions")
+    .upsert(rows, { onConflict: "player_id,lesson_id", ignoreDuplicates: true })
+    .select("xp");
+  if (insertError) throw insertError;
+
+  const gained = (inserted ?? []).reduce((sum, row) => sum + Number(row.xp ?? 0), 0);
+  if (gained === 0) return { xp: Number(player.xp), gained: 0 };
+
+  // XP selalu = jumlah completion, jadi tidak bisa melenceng walau ada request paralel.
+  const { data: completions, error: sumError } = await db
+    .from("pyfun_rank_completions")
+    .select("xp")
+    .eq("player_id", player.player_id);
+  if (sumError) throw sumError;
+  const xp = (completions ?? []).reduce((sum, row) => sum + Number(row.xp ?? 0), 0);
+
+  const { error: xpError } = await db
+    .from("pyfun_rank_players")
+    .update({ xp, updated_at: new Date().toISOString() })
+    .eq("player_id", player.player_id);
+  if (xpError) throw xpError;
+  return { xp, gained };
+}
+
+const NO_STORE = { "cache-control": "no-store" };
 
 export async function GET(request: Request) {
   const limit = rateLimit(`rank:get:${clientIp(request)}`, 80, 60_000);
   if (!limit.ok) return errorResponse("Terlalu banyak permintaan. Coba lagi sebentar.", 429, limit.retryAfter);
-  const rawPlayerId = new URL(request.url).searchParams.get("playerId");
-  const playerId = rawPlayerId?.trim() || null;
   const db = adminClient();
   if (!db) return errorResponse("Papan peringkat belum dikonfigurasi di server.", 503);
 
   try {
     const user = await getSessionUser();
-    const authUserId = user?.id ?? null;
-    const row = await getCurrentPlayer(db, authUserId, playerId);
-    const boardPlayerId = row?.player_id ?? playerId;
-    const board = await readBoard(db, boardPlayerId);
-    return NextResponse.json({ ...board, custom_name: row?.custom_name ?? row?.name ?? null }, { headers: { "cache-control": "no-store" } });
+    const row = user ? await getPlayerByAuth(db, user.id) : null;
+    // Penanda "kamu" hanya untuk akun login; tamu tidak pernah punya baris.
+    const board = await readBoard(db, row?.player_id ?? null);
+    return NextResponse.json(
+      {
+        ...board,
+        authenticated: Boolean(user),
+        custom_name: user ? (row?.custom_name ?? row?.name ?? googleName(user)) : null,
+      },
+      { headers: NO_STORE },
+    );
   } catch (error) {
     console.error("GET /api/ranks", error);
     return errorResponse("Papan peringkat belum siap. Jalankan schema rank di Supabase.", 503);
@@ -292,84 +258,35 @@ export async function POST(request: Request) {
   const db = adminClient();
   if (!db) return errorResponse("Papan peringkat belum dikonfigurasi di server.", 503);
 
-  const sessionUser = await getSessionUser();
-  // Jangan pernah percaya authUserId dari body: identitas login hanya boleh
-  // berasal dari cookie sesi Supabase yang diverifikasi server.
-  const authUserId = sessionUser?.id ?? null;
-  const playerId = typeof body.playerId === "string" ? body.playerId.trim() : "";
-  const secret = typeof body.secret === "string" ? body.secret.trim() : "";
-  // `name` dipakai untuk setiap sync. Hanya `customName` yang menandakan
-  // permintaan ganti nama, supaya sync biasa tidak berhenti sebelum XP dicatat.
-  const hasCustomName = typeof body.customName === "string";
-  const customName = hasCustomName ? normalizeCustomName(body.customName) : null;
-  const name = normalizeName(body.name) ?? customName ?? "Pelajar";
-  const completedIds = parseCompletedIds(body.completedIds);
-
-  if (hasCustomName) {
-    if (!authUserId) return errorResponse("Sesi login belum aktif.", 401);
-    if (!customName) return errorResponse("Nama tidak valid.", 400);
-    if (!UUID_RE.test(playerId)) return errorResponse("playerId tidak valid.", 400);
-    if (secret.length < 20) return errorResponse("secret terlalu pendek.", 400);
-
-    try {
-      const secretHash = createHash("sha256").update(secret, "utf8").digest("hex");
-      const current = await getCurrentPlayer(db, authUserId, playerId);
-
-      if (!current) {
-        const { data: created, error } = await db
-          .from("pyfun_rank_players")
-          .insert({
-            player_id: playerId,
-            auth_user_id: authUserId,
-            name: customName,
-            custom_name: customName,
-            secret_hash: secretHash,
-            xp: 0,
-          })
-          .select("player_id, custom_name")
-          .single();
-        if (error) throw error;
-        return NextResponse.json(
-          { ok: true, custom_name: customName, player_id: created.player_id },
-          { headers: { "cache-control": "no-store" } },
-        );
-      }
-
-      // Jangan biarkan sesi mana pun mengambil alih baris milik akun lain.
-      if (current.auth_user_id && current.auth_user_id !== authUserId) {
-        return errorResponse("Baris peringkat ini milik akun lain.", 403);
-      }
-      if (!current.auth_user_id && current.secret_hash !== secretHash) {
-        return errorResponse("secret tidak cocok.", 401);
-      }
-
-      const { error } = await db
-        .from("pyfun_rank_players")
-        .update({
-          name: customName,
-          custom_name: customName,
-          auth_user_id: authUserId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("player_id", current.player_id);
-      if (error) throw error;
-
-      return NextResponse.json(
-        { ok: true, custom_name: customName, player_id: current.player_id },
-        { headers: { "cache-control": "no-store" } },
-      );
-    } catch (error) {
-      console.error("POST /api/ranks (custom name)", error);
-      return errorResponse("Gagal menyimpan nama. Coba lagi.", 503);
-    }
+  // Aturan utama: tanpa login Google tidak ada pencatatan sama sekali.
+  // Identitas hanya dari cookie sesi Supabase yang diverifikasi server;
+  // playerId/secret/authUserId dari body tidak pernah dipakai.
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: "Login dengan Google dulu agar XP tercatat di papan peringkat.", code: "login_required" },
+      { status: 401, headers: NO_STORE },
+    );
   }
 
-  if (!UUID_RE.test(playerId)) return errorResponse("playerId tidak valid.", 400);
-  if (secret.length < 20) return errorResponse("secret terlalu pendek.", 400);
-  if (!name || name.length < 1 || name.length > MAX_NAME) return errorResponse("Nama tidak valid.", 400);
-  if (completedIds === null) return errorResponse("completedIds tidak valid.", 400);
-
   try {
+    if (typeof body.customName === "string") {
+      const customName = normalizeCustomName(body.customName);
+      if (!customName) return errorResponse("Nama tidak valid.", 400);
+      const player = await ensurePlayer(db, user, customName);
+      const { error } = await db
+        .from("pyfun_rank_players")
+        .update({ name: customName, custom_name: customName })
+        .eq("player_id", player.player_id);
+      if (error) throw error;
+      return NextResponse.json({ ok: true, custom_name: customName }, { headers: NO_STORE });
+    }
+
+    const completedIds = parseCompletedIds(body.completedIds);
+    if (completedIds === null) return errorResponse("completedIds tidak valid.", 400);
+
+    const player = await ensurePlayer(db, user, normalizeName(body.name));
+
     const xpById = await trustedLessonXp();
     const lessons = completedIds.flatMap((id) => {
       const xp = xpById.get(id);
@@ -378,26 +295,11 @@ export async function POST(request: Request) {
       return [];
     });
 
-    const result = await syncPlayer(db, {
-      playerId,
-      authUserId,
-      secretHash: createHash("sha256").update(secret, "utf8").digest("hex"),
-      name,
-      lessons,
-    });
-
-    if (!result.ok) {
-      return errorResponse(
-        result.reason === "invalid_secret" ? "secret tidak cocok." : "Papan peringkat menolak permintaan.",
-        result.reason === "invalid_secret" ? 401 : 400,
-      );
-    }
-
-    const current = await getCurrentPlayer(db, authUserId, playerId);
-    const board = await readBoard(db, current?.player_id ?? playerId);
+    const result = await recordCompletions(db, player, lessons);
+    const board = await readBoard(db, player.player_id);
     return NextResponse.json(
-      { ...board, gained: result.gained },
-      { headers: { "cache-control": "no-store" } },
+      { ...board, authenticated: true, gained: result.gained },
+      { headers: NO_STORE },
     );
   } catch (error) {
     console.error("POST /api/ranks", error);

@@ -1,13 +1,17 @@
 "use client";
 
 /**
- * Identitas rank disimpan di perangkat ini.
+ * Papan peringkat hanya untuk akun Google.
  *
- * - `playerId` adalah UUID publik untuk menandai baris di papan peringkat.
- * - `secret` hanya dikirim ke /api/ranks dan tidak pernah ditampilkan.
+ * - Identitas = sesi login Supabase (cookie), diverifikasi di server.
+ *   Tidak ada lagi ID/secret perangkat: tanpa login, tidak ada data rank.
  * - Client hanya mengirim ID materi, bukan XP. Server menghitung XP dari
- *   katalog materi resmi supaya angka rank tidak bisa di-inject dari browser.
+ *   katalog materi resmi dan satu materi hanya dihitung sekali per akun.
+ * - Progres lokal tetap jalan untuk tamu; saat login, materi resmi yang sudah
+ *   selesai di perangkat ini dikirim sekali (`syncCompleted`).
  */
+
+import { supabaseBrowser } from "./supabase/client";
 
 export type RankEntry = {
   id: string;
@@ -21,54 +25,23 @@ export type RankBoard = {
   entries: RankEntry[];
   total: number;
   configured: boolean;
+  /** True kalau permintaan datang dari sesi Google yang valid. */
+  authenticated: boolean;
 };
 
 export type RankSyncResult = RankBoard & { gained: number };
 
-const PLAYER_KEY = "pyfun:rank-player";
-const SECRET_KEY = "pyfun:rank-secret";
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SECRET_RE = /^[a-f0-9]{64}$/i;
-const LESSON_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
-// Satu request hanya boleh membawa satu penyelesaian. Ini mencegah client
-// mengirim seluruh katalog sekaligus untuk melompati papan peringkat.
-const MAX_SYNC_LESSONS = 1;
-
-function randomHex(byteLength: number) {
-  const bytes = new Uint8Array(byteLength);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function makeUuid() {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-function credentials(): { playerId: string; secret: string } | null {
-  try {
-    let playerId = localStorage.getItem(PLAYER_KEY);
-    let secret = localStorage.getItem(SECRET_KEY);
-
-    if (!playerId || !UUID_RE.test(playerId)) {
-      playerId = makeUuid();
-      localStorage.setItem(PLAYER_KEY, playerId);
-    }
-    if (!secret || !SECRET_RE.test(secret)) {
-      secret = randomHex(32);
-      localStorage.setItem(SECRET_KEY, secret);
-    }
-
-    return { playerId, secret };
-  } catch {
-    return null;
+/** Dilempar saat server menolak karena belum login Google. */
+export class RankLoginRequiredError extends Error {
+  constructor(message = "Login dengan Google dulu agar XP tercatat di papan peringkat.") {
+    super(message);
+    this.name = "RankLoginRequiredError";
   }
 }
+
+const LESSON_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
+// Sama dengan batas server (MAX_LESSONS di /api/ranks).
+const SYNC_CHUNK = 50;
 
 async function readJson<T>(response: Response): Promise<T> {
   let body: unknown = null;
@@ -79,6 +52,7 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
+    if (response.status === 401) throw new RankLoginRequiredError();
     const message =
       typeof body === "object" &&
       body !== null &&
@@ -92,70 +66,96 @@ async function readJson<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-/** Ambil papan peringkat. `playerId` hanya untuk menandai baris "kamu". */
+/** Cek cepat di browser apakah ada sesi Google, supaya tamu tidak memicu request sia-sia. */
+export async function hasRankSession(): Promise<boolean> {
+  const client = supabaseBrowser;
+  if (!client) return false;
+  try {
+    const { data: { session } } = await client.auth.getSession();
+    return Boolean(session?.user);
+  } catch {
+    return false;
+  }
+}
+
+/** Ambil papan peringkat. Baris "kamu" hanya muncul untuk akun yang login. */
 export async function fetchRankBoard(): Promise<RankBoard> {
-  const id = credentials()?.playerId;
-  const query = id ? `?playerId=${encodeURIComponent(id)}` : "";
-  const response = await fetch(`/api/ranks${query}`, { cache: "no-store" });
+  const response = await fetch("/api/ranks", { cache: "no-store" });
   return readJson<RankBoard>(response);
 }
 
+/** ID materi yang sudah selesai di perangkat ini dan layak dikirim ke rank. */
+export function completedLessonIds(progress: Record<string, { done: boolean }>): string[] {
+  return Object.entries(progress)
+    .filter(([id, p]) => p.done && !id.startsWith("gen-") && LESSON_ID_RE.test(id))
+    .map(([id]) => id);
+}
+
 /**
- * Daftarkan/rename pemain dan kirim satu materi resmi yang baru selesai.
- * Server mengabaikan ID materi yang tidak ada di katalog resmi, jadi materi
- * buatan sendiri tidak bisa menambah XP peringkat.
+ * Kirim materi yang sudah selesai ke akun yang sedang login.
+ * Dipecah per 50 ID. Server mengabaikan materi buatan sendiri/tidak dikenal
+ * dan materi yang sudah tercatat. Melempar `RankLoginRequiredError` untuk tamu.
  */
-export async function syncRank(name: string, completedIds: string[]): Promise<RankSyncResult> {
-  const creds = credentials();
-  if (!creds) throw new Error("Penyimpanan browser tidak tersedia.");
+export async function syncCompleted(ids: string[]): Promise<RankSyncResult> {
+  const unique = [...new Set(ids)].filter((id) => LESSON_ID_RE.test(id));
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += SYNC_CHUNK) chunks.push(unique.slice(i, i + SYNC_CHUNK));
+  if (chunks.length === 0) chunks.push([]);
 
-  const ids = [...new Set(completedIds)]
-    .filter((id) => LESSON_ID_RE.test(id))
-    .slice(0, MAX_SYNC_LESSONS);
-
-  const response = await fetch("/api/ranks", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      playerId: creds.playerId,
-      secret: creds.secret,
-      name,
-      completedIds: ids,
-    }),
-  });
-
-  return readJson<RankSyncResult>(response);
-}
-
-/** Kirim satu penyelesaian materi. Aman dipanggil fire-and-forget. */
-export async function submitRankCompletion(lessonId: string, name: string | null) {
-  if (!name?.trim() || !LESSON_ID_RE.test(lessonId)) return;
-  await syncRank(name, [lessonId]);
+  let last: RankSyncResult | null = null;
+  let gained = 0;
+  for (const chunk of chunks) {
+    const response = await fetch("/api/ranks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ completedIds: chunk }),
+    });
+    const result = await readJson<RankSyncResult>(response);
+    gained += result.gained;
+    last = result;
+  }
+  return { ...(last as RankSyncResult), gained };
 }
 
 /**
- * Simpan nama tampilan untuk pemain yang sedang login.
- *
- * Identitas tetap memakai pasangan playerId + secret perangkat, bukan
- * `authUserId` yang dikirim dari browser. Server menentukan pemilik sesi dari
- * cookie Supabase, sehingga nama tidak bisa dipasang ke akun lain.
+ * Muat papan untuk halaman rank: tamu hanya membaca; akun login sekalian
+ * mengirim materi lokal yang belum tercatat lalu mendapat papan terbaru.
+ */
+export async function loadRank(localIds: string[]): Promise<RankBoard> {
+  const board = await fetchRankBoard();
+  if (!board.authenticated) return board;
+  return syncCompleted(localIds);
+}
+
+export type RankSubmitStatus = "recorded" | "guest" | "error";
+
+/**
+ * Kirim satu penyelesaian materi. Tidak pernah melempar: tamu → "guest"
+ * (tidak masuk rank), gagal jaringan/server → "error".
+ */
+export async function submitRankCompletion(lessonId: string): Promise<RankSubmitStatus> {
+  if (!LESSON_ID_RE.test(lessonId)) return "error";
+  if (!(await hasRankSession())) return "guest";
+  try {
+    await syncCompleted([lessonId]);
+    return "recorded";
+  } catch (error) {
+    return error instanceof RankLoginRequiredError ? "guest" : "error";
+  }
+}
+
+/**
+ * Simpan nama tampilan untuk akun yang sedang login. Pemilik baris ditentukan
+ * server dari cookie sesi, bukan dari data yang dikirim browser.
  */
 export async function saveRankName(name: string): Promise<string> {
-  const creds = credentials();
-  if (!creds) throw new Error("Penyimpanan browser tidak tersedia.");
-
   const trimmed = name.trim().slice(0, 20);
   if (!trimmed) throw new Error("Nama wajib diisi.");
 
   const response = await fetch("/api/ranks", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      playerId: creds.playerId,
-      secret: creds.secret,
-      name: trimmed,
-      customName: trimmed,
-    }),
+    body: JSON.stringify({ customName: trimmed }),
   });
 
   const payload = await readJson<{ custom_name?: string }>(response);

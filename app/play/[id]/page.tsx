@@ -7,7 +7,7 @@ import { Bar, Confetti, Icon } from "@/components/ui";
 import { CodeBlock, Rich } from "@/components/Rich";
 import { Editor, Output, RunButton } from "@/components/Editor";
 import { actions, useGame } from "@/lib/store";
-import { submitRankCompletion } from "@/lib/rank";
+import { submitRankCompletion, type RankSubmitStatus } from "@/lib/rank";
 import { findLesson, fetchSupabaseLessons, isUnlocked } from "@/lib/lessons";
 import { BADGES } from "@/lib/game";
 import { checkCode, runPython, warmUp, type RunResult } from "@/lib/python";
@@ -40,6 +40,7 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
   const [note, setNote] = useState("");
   const [hintLevel, setHintLevel] = useState(0);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [rankStatus, setRankStatus] = useState<RankSubmitStatus | "skipped" | "pending">("pending");
   const finished = useRef(false);
 
   const step = lesson?.steps[idx];
@@ -99,7 +100,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
       finished.current = true;
       setSummary(actions.complete(lesson, mistakes));
       if (lesson.source === "bundled" || lesson.source === "supabase" || lesson.source === "catalog") {
-        void submitRankCompletion(lesson.id, g.name).catch(() => {});
+        void submitRankCompletion(lesson.id).then(setRankStatus);
+      } else {
+        setRankStatus("skipped");
       }
     }
     setPhase("done");
@@ -211,6 +214,9 @@ export default function Play({ params }: { params: Promise<{ id: string }> }) {
         {summary.newBadges.length > 0 && (
           <p className="mt-5 text-sm text-dim">Lencana baru: <b className="text-ink">{summary.newBadges.map((b) => BADGES[b as keyof typeof BADGES]?.name).join(", ")}</b></p>
         )}
+        {rankStatus === "recorded" && <p className="mt-5 text-sm text-dim">XP sudah tercatat di <b className="text-ink">papan peringkat</b>.</p>}
+        {rankStatus === "guest" && <p className="mt-5 max-w-xs text-sm text-dim">Kamu belum login Google, jadi XP ini <b className="text-ink">belum masuk rank</b>. Login dari menu atas — materi yang sudah selesai ikut tercatat otomatis.</p>}
+        {rankStatus === "error" && <p className="mt-5 max-w-xs text-sm text-danger">XP belum tercatat di rank (koneksi/server bermasalah). Akan dicoba lagi saat kamu membuka halaman Rank.</p>}
         <Link href="/quest" className="btn btn-lime mt-8 w-full max-w-xs py-4 text-lg">Lanjut</Link>
       </Center>
     );

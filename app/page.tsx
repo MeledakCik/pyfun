@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Flame, Terminal, Wand2, Zap } from "lucide-react";
 import { Logo } from "@/components/ui";
 import { actions, useGame } from "@/lib/store";
-import { syncRank } from "@/lib/rank";
 
 const PERKS = [
 	{ Icon: Terminal, t: "Kode langsung jalan", d: "Python dijalankan di browser, tanpa install." },
@@ -21,7 +20,6 @@ export default function Landing() {
 	const go = () => {
 		const finalName = g.name || name.trim() || "Pelajar";
 		if (!g.name) actions.start(finalName);
-		void syncRank(finalName, []).catch(() => {});
 
 		router.push("/quest");
 	};

@@ -103,6 +103,9 @@ create table if not exists public.pyfun_rank_players (
 );
 
 alter table public.pyfun_rank_players
+  alter column secret_hash drop not null;
+
+alter table public.pyfun_rank_players
   add column if not exists user_id uuid,
   add column if not exists username text,
   add column if not exists display_name text,
@@ -157,6 +160,8 @@ language sql stable security definer set search_path = public as $$
   with ranked as (
     select r.player_id, coalesce(r.custom_name, r.name) as name, r.xp, row_number() over (order by r.xp desc, r.updated_at asc, r.player_id asc) as rank_position, count(*) over () as total
     from public.pyfun_rank_players r
+    -- Hanya akun Google yang masuk rank; baris tamu lama disembunyikan.
+    where r.auth_user_id is not null
   )
   select ranked.player_id, ranked.name, ranked.xp, ranked.rank_position, ranked.total, (p_player_id is not null and ranked.player_id = p_player_id) as is_me
   from ranked where ranked.rank_position <= greatest(1, least(coalesce(p_limit, 50), 100)) or (p_player_id is not null and ranked.player_id = p_player_id)
@@ -165,126 +170,10 @@ $$;
 revoke all on function public.pyfun_rank_board(uuid, integer) from public, anon, authenticated;
 grant execute on function public.pyfun_rank_board(uuid, integer) to service_role;
 
-create or replace function public.pyfun_rank_sync(
-  p_player_id uuid default null,
-  p_auth_user_id uuid default null,
-  p_secret_hash text default null,
-  p_name text default null,
-  p_lessons jsonb default '[]'::jsonb,
-  p_create boolean default false
-)
-returns table (ok boolean, reason text, xp integer, gained integer)
-language plpgsql security definer set search_path = public as $$
-declare
-  v_hash text;
-  v_xp integer;
-  v_gained integer := 0;
-  v_name text := btrim(coalesce(p_name, ''));
-  v_existing_player_id uuid;
-  v_target_player_id uuid;
-begin
-  if p_player_id is null and p_auth_user_id is null then
-    return query select false, 'invalid_player'::text, 0, 0;
-    return;
-  end if;
+-- pyfun_rank_sync (RPC lama) sudah tidak dipakai: /api/ranks menulis langsung ke
+-- tabel lewat service role dan hanya menerima akun Google. Semua overload lama
+-- dihapus oleh blok DO di atas supaya tidak ada PGRST203.
 
-  if p_secret_hash is null or p_secret_hash !~ '^[a-f0-9]{64}$' then
-    return query select false, 'invalid_secret'::text, 0, 0;
-    return;
-  end if;
-
-  if char_length(v_name) < 1 or char_length(v_name) > 20 or v_name ~ '[<>]' or v_name ~ '[[:cntrl:]]' then
-    return query select false, 'invalid_name'::text, 0, 0;
-    return;
-  end if;
-
-  if p_lessons is null or jsonb_typeof(p_lessons) <> 'array' then
-    return query select false, 'invalid_lessons'::text, 0, 0;
-    return;
-  end if;
-
-  if jsonb_array_length(p_lessons) > 300 then
-    return query select false, 'invalid_lessons'::text, 0, 0;
-    return;
-  end if;
-
-  if p_auth_user_id is not null then
-    select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
-    from public.pyfun_rank_players where auth_user_id = p_auth_user_id for update;
-  end if;
-
-  if v_existing_player_id is null and p_player_id is not null then
-    select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
-    from public.pyfun_rank_players where player_id = p_player_id for update;
-  end if;
-
-  if v_existing_player_id is null then
-    if not coalesce(p_create, false) then
-      return query select true, 'not_registered'::text, 0, 0;
-      return;
-    end if;
-
-    v_target_player_id := coalesce(p_player_id, gen_random_uuid());
-    insert into public.pyfun_rank_players (player_id, auth_user_id, custom_name, name, secret_hash, xp)
-    values (v_target_player_id, p_auth_user_id, null, v_name, p_secret_hash, 0)
-    on conflict (player_id) do nothing;
-
-    if p_auth_user_id is not null then
-      select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
-      from public.pyfun_rank_players where auth_user_id = p_auth_user_id for update;
-    else
-      select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
-      from public.pyfun_rank_players where player_id = v_target_player_id for update;
-    end if;
-
-    if v_existing_player_id is null then
-      return query select false, 'invalid_player'::text, 0, 0;
-      return;
-    end if;
-  end if;
-
-  if v_hash <> p_secret_hash then
-    return query select false, 'invalid_secret'::text, 0, 0;
-    return;
-  end if;
-
-  update public.pyfun_rank_players
-  set name = v_name,
-      custom_name = coalesce(custom_name, v_name),
-      auth_user_id = coalesce(auth_user_id, p_auth_user_id),
-      updated_at = now()
-  where player_id = v_existing_player_id;
-
-  with raw as (
-    select item->>'id' as lesson_id,
-           case when (item->>'xp') ~ '^[0-9]{1,5}$' then (item->>'xp')::integer else 0 end as xp
-    from jsonb_array_elements(p_lessons) item
-  ),
-  input as (
-    select distinct on (lesson_id) lesson_id, xp
-    from raw
-    where lesson_id ~ '^[A-Za-z0-9_-]{1,80}$' and xp between 1 and 2000
-    order by lesson_id
-  ),
-  inserted as (
-    insert into public.pyfun_rank_completions (player_id, lesson_id, xp)
-    select v_existing_player_id, input.lesson_id, input.xp
-    from input
-    on conflict (player_id, lesson_id) do nothing
-    returning xp
-  )
-  select coalesce(sum(inserted.xp), 0) into v_gained from inserted;
-
-  if v_gained > 0 then
-    update public.pyfun_rank_players set xp = least(xp + v_gained, 10000000), updated_at = now() where player_id = v_existing_player_id returning xp into v_xp;
-  else
-    select xp into v_xp from public.pyfun_rank_players where player_id = v_existing_player_id;
-  end if;
-
-  return query select true, 'ok'::text, v_xp, v_gained;
-end; $$;
-revoke all on function public.pyfun_rank_sync(uuid, uuid, text, text, jsonb, boolean) from public, anon, authenticated;
-grant execute on function public.pyfun_rank_sync(uuid, uuid, text, text, jsonb, boolean) to service_role;
 
 update public.pyfun_rank_players set display_name = coalesce(display_name, name) where display_name is null;
 update public.pyfun_rank_players set username = lower(regexp_replace(coalesce(username, name || '_' || substr(player_id::text, 1, 4)), '[^a-zA-Z0-9_]+', '_', 'g')) where username is null;
@@ -321,3 +210,13 @@ where p.auth_user_id is null
 
 -- Buang catatan kuota AI yang sudah kedaluwarsa (aman dijalankan ulang).
 delete from public.pyfun_ai_daily_usage where day < current_date - interval '30 days';
+
+-- ============================================================
+-- 5. BARIS TAMU LAMA (opsional)
+-- ============================================================
+-- Baris tanpa auth_user_id sudah tidak tampil di rank (lihat pyfun_rank_board).
+-- Kalau ingin membersihkannya permanen, jalankan manual:
+--
+--   delete from public.pyfun_rank_players where auth_user_id is null;
+--
+-- (pyfun_rank_completions ikut terhapus lewat ON DELETE CASCADE.)

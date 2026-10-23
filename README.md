@@ -40,7 +40,7 @@ lib/
   supabase.ts           client Supabase publik (anon, hanya baca)
   supabase-admin.ts     client service role khusus server
   ai.ts                 generate materi via Groq (server-only)
-  rank.ts               identitas perangkat + client /api/ranks
+  rank.ts               client /api/ranks (login Google + sinkron materi)
   store.ts              state + localStorage
   game.ts               XP, level, rank, lencana
   python.ts             runner Pyodide
@@ -71,22 +71,20 @@ Halaman `/ranks` membaca data asli dari Supabase lewat `/api/ranks`. Tidak ada
 NPC atau data dummy yang di-seed ke database. Pemain masuk papan setelah
 menyelesaikan materi resmi.
 
-- Identitas rank adalah UUID + secret acak yang dibuat di browser
-  (`lib/rank.ts`); secret tidak pernah ditampilkan dan hanya dikirim ke route
-  server.
-- Client hanya mengirim satu ID materi, bukan XP. Server menghitung XP dari
-  `BUNDLED` + materi bonus resmi, jadi angka rank tidak bisa di-inject dari
-  browser. Progres lokal yang bisa diedit lewat localStorage tidak disinkronkan
-  borongan; rank hanya bertambah saat materi diselesaikan.
-- Baris rank baru dibuat saat materi resmi pertama diselesaikan. Sekadar membuka
-  halaman rank atau mengisi nama tidak membuat baris 0 XP.
+- **Hanya akun Google yang masuk rank.** Identitas = sesi Supabase Auth yang
+  diverifikasi di server (`auth_user_id`), satu akun satu baris. Tamu tetap bisa
+  belajar (progres di localStorage) tetapi tidak dicatat dan tidak tampil di
+  papan; `POST /api/ranks` tanpa sesi dijawab 401.
+- Saat login, materi resmi yang sudah selesai di perangkat itu (termasuk yang
+  dikerjakan saat masih tamu) dikirim otomatis, dipecah 50 ID per request.
+  Server hanya menerima ID yang ada di katalog resmi dan menghitung XP sendiri.
+- Baris rank dibuat saat akun login pertama kali menyinkronkan materi atau
+  mengganti nama. Nama bawaan diambil dari profil Google.
 - Materi buatan sendiri (`gen-...`) dan pengulangan materi tidak menambah XP
   rank. Tabel completion memakai primary key `(player_id, lesson_id)`.
 - Tabel `pyfun_rank_players` dan `pyfun_rank_completions` hanya bisa diakses
   `service_role`; `anon`/`authenticated` tidak punya policy. Jalankan
   `supabase/schema.sql` untuk membuat tabel dan fungsi rank.
-- Tanpa login, anti-cheat bersifat perangkat. Untuk proteksi lebih kuat,
-  tambahkan Supabase Auth dan verifikasi percobaan di server.
 
 ## Endpoint materi publik
 
