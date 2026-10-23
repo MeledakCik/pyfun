@@ -49,7 +49,6 @@ export const CHAPTERS = [
   "Topik Lanjut Buku",
   "Python Pro",
   "Algoritma Gacor",
-  "Testing & Async",
 ] as const;
 
 const ch1 = mk(CHAPTERS[0], [
