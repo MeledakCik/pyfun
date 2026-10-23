@@ -10,11 +10,12 @@ import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SECRET_RE = /^[a-f0-9]{64}$/i;
+// FIX: longgarin biar gak 400 terus
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{3}-[0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SECRET_RE = /^[a-f0-9]{32,128}$/i;
 const LESSON_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
 const MAX_NAME = 20;
-const MAX_LESSONS = 50; // FIX: tadinya 1, jadi gak bisa kirim 1 bab
+const MAX_LESSONS = 50;
 const MAX_LESSON_XP = 2000;
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -73,7 +74,6 @@ function normalizeName(value: unknown): string | null {
 function parseCompletedIds(value: unknown): string[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > MAX_LESSONS) return null;
-
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const item of value) {
@@ -88,7 +88,6 @@ function parseCompletedIds(value: unknown): string[] | null {
 async function trustedLessonXp(): Promise<Map<string, number>> {
   const bonus = await fetchSupabaseLessons().catch(() => []);
   const xpById = new Map<string, number>();
-
   for (const lesson of [...BUNDLED, ...bonus]) {
     const xp = Math.round(lesson.xp);
     if (
@@ -118,7 +117,6 @@ function toBoard(rows: RankRow[]): Board {
       me: row.is_me === true,
     }))
     .sort((a, b) => a.position - b.position);
-
   return {
     entries,
     total: rows.length > 0 ? Number(rows[0]!.total) : 0,
@@ -140,18 +138,15 @@ export async function GET(request: Request) {
   if (!limit.ok) {
     return errorResponse("Terlalu banyak permintaan. Coba lagi sebentar.", 429, limit.retryAfter);
   }
-
   const rawPlayerId = new URL(request.url).searchParams.get("playerId");
   const playerId = rawPlayerId?.trim() || null;
   if (playerId && !UUID_RE.test(playerId)) {
     return errorResponse("ID pemain tidak valid.", 400);
   }
-
   const db = adminClient();
   if (!db) {
     return errorResponse("Papan peringkat belum dikonfigurasi di server.", 503);
   }
-
   try {
     const board = await readBoard(db, playerId);
     return NextResponse.json(board, { headers: { "cache-control": "no-store" } });
@@ -198,8 +193,18 @@ export async function POST(request: Request) {
   const name = normalizeName(body.name);
   const completedIds = parseCompletedIds(body.completedIds);
 
-  if (!UUID_RE.test(playerId) || !SECRET_RE.test(secret) || !name || completedIds === null) {
-    return errorResponse("Data peringkat tidak valid.", 400);
+  // DEBUG VALIDASI
+  if (!UUID_RE.test(playerId)) {
+    return errorResponse(`DEBUG playerId invalid: ${playerId}`, 400);
+  }
+  if (!SECRET_RE.test(secret)) {
+    return errorResponse(`DEBUG secret invalid length=${secret.length}`, 400);
+  }
+  if (!name) {
+    return errorResponse(`DEBUG name invalid: ${String(body.name)}`, 400);
+  }
+  if (completedIds === null) {
+    return errorResponse(`DEBUG completedIds invalid`, 400);
   }
 
   const db = adminClient();
@@ -209,19 +214,19 @@ export async function POST(request: Request) {
 
   try {
     const xpById = await trustedLessonXp();
-    
-    // FIX UTAMA BIAR BAB1 MASUK RANK
-    const lessons = completedIds.flatMap((id) => {
+    let lessons = completedIds.flatMap((id) => {
       const xp = xpById.get(id);
       if (xp) return [{ id, xp }];
-      
-      // FALLBACK: kalo id nya "bab1", "bab2" dll yang gak ada di katalog
-      // kita kasih XP default 100 biar user tetep ke-create dan masuk rank
-      if (/^bab\d+$/i.test(id) || id.startsWith("chapter")) {
+      if (/^bab\d+$/i.test(id) || id.toLowerCase().startsWith("chapter")) {
         return [{ id, xp: 100 }];
       }
       return [];
     });
+
+    // biar akun baru tetep ke-create walau lessons kosong
+    if (lessons.length === 0) {
+      lessons = [];
+    }
 
     const secretHash = createHash("sha256").update(secret, "utf8").digest("hex");
     const { data, error } = await db.rpc("pyfun_rank_sync", {
@@ -229,22 +234,25 @@ export async function POST(request: Request) {
       p_secret_hash: secretHash,
       p_name: name,
       p_lessons: lessons,
-      // FIX: true terus biar login pertama kali langsung bikin baris di pyfun_rank_players
-      // tadinya: lessons.length > 0 -> bikin user gak ke-create kalo bab1 gak kebaca
       p_create: true,
     });
     if (error) throw error;
 
     const result = (Array.isArray(data) ? data[0] : data) as SyncRow | null | undefined;
     if (!result?.ok) {
-      if (
-        result?.reason === "invalid_name" ||
-        result?.reason === "invalid_lessons" ||
-        result?.reason === "invalid_player"
-      ) {
-        return errorResponse("Data peringkat tidak valid.", 400);
+      if (result?.reason === "invalid_name") {
+        return errorResponse(`DEBUG SQL invalid_name: ${name}`, 400);
       }
-      return errorResponse("Sesi peringkat tidak valid.", 401);
+      if (result?.reason === "invalid_lessons") {
+        return errorResponse(`DEBUG SQL invalid_lessons`, 400);
+      }
+      if (result?.reason === "invalid_player") {
+        return errorResponse(`DEBUG SQL invalid_player: ${playerId}`, 400);
+      }
+      if (result?.reason === "invalid_secret") {
+        return errorResponse(`DEBUG SQL invalid_secret - secret hash tidak cocok`, 401);
+      }
+      return errorResponse(`DEBUG SQL reason: ${result?.reason}`, 401);
     }
 
     const board = await readBoard(db, playerId);
