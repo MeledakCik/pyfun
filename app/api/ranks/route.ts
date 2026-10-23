@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUNDLED, fetchSupabaseLessons } from "@/lib/lessons";
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
     if (!authUserId && !playerId) return errorResponse("Sesi login belum aktif.", 401);
     const current = await getCurrentPlayer(db, authUserId, playerId || null);
     if (!current) {
-      const fallbackPlayerId = playerId || crypto.randomUUID();
+      const fallbackPlayerId = playerId || randomUUID();
       const created = await db.from("pyfun_rank_players").insert({
         player_id: fallbackPlayerId,
         auth_user_id: authUserId,

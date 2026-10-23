@@ -15,6 +15,8 @@ export function GoogleLogin({ className = "" }: { className?: string }) {
       return;
     }
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+
     setLoading(true);
     setError("");
 
@@ -22,7 +24,7 @@ export function GoogleLogin({ className = "" }: { className?: string }) {
       const { error } = await client.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${siteUrl}/auth/callback`,
           queryParams: {
             access_type: "online",
             prompt: "select_account",
