@@ -88,17 +88,14 @@ grant execute on function public.consume_pyfun_ai_quota(text, integer, integer) 
 drop function if exists public.pyfun_rank_board(uuid, integer);
 drop function if exists public.pyfun_rank_sync(uuid, text, text, jsonb);
 drop function if exists public.pyfun_rank_sync(uuid, text, text, jsonb, boolean);
+drop function if exists public.pyfun_rank_sync(uuid, uuid, text, text, jsonb, boolean);
 
-create table if not exists public.pyfun_rank_players (
-  player_id   uuid primary key,
-  name        text not null check (name = btrim(name) and char_length(name) between 1 and 20 and name !~ '[<>]' and name !~ '[[:cntrl:]]'),
-  username    text,
-  display_name text,
-  secret_hash text not null check (secret_hash ~ '^[a-f0-9]{64}$'),
-  xp          integer not null default 0 check (xp >= 0 and xp <= 10000000),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
+create extension if not exists pgcrypto;
+
+alter table public.pyfun_rank_players add column if not exists auth_user_id uuid references auth.users(id);
+alter table public.pyfun_rank_players add column if not exists custom_name text;
+
+create unique index if not exists pyfun_rank_players_auth_user_id_idx on public.pyfun_rank_players (auth_user_id) where auth_user_id is not null;
 
 create table if not exists public.pyfun_rank_completions (
   player_id    uuid not null references public.pyfun_rank_players(player_id) on delete cascade,
@@ -121,7 +118,7 @@ create or replace function public.pyfun_rank_board(p_player_id uuid default null
 returns table (player_id uuid, name text, xp integer, rank_position bigint, total bigint, is_me boolean)
 language sql stable security definer set search_path = public as $$
   with ranked as (
-    select r.player_id, r.name, r.xp, row_number() over (order by r.xp desc, r.updated_at asc, r.player_id asc) as rank_position, count(*) over () as total
+    select r.player_id, coalesce(r.custom_name, r.name) as name, r.xp, row_number() over (order by r.xp desc, r.updated_at asc, r.player_id asc) as rank_position, count(*) over () as total
     from public.pyfun_rank_players r
   )
   select ranked.player_id, ranked.name, ranked.xp, ranked.rank_position, ranked.total, (p_player_id is not null and ranked.player_id = p_player_id) as is_me
@@ -131,37 +128,127 @@ $$;
 revoke all on function public.pyfun_rank_board(uuid, integer) from public, anon, authenticated;
 grant execute on function public.pyfun_rank_board(uuid, integer) to service_role;
 
-create or replace function public.pyfun_rank_sync(p_player_id uuid, p_secret_hash text, p_name text, p_lessons jsonb default '[]'::jsonb, p_create boolean default false)
+create or replace function public.pyfun_rank_sync(
+  p_player_id uuid default null,
+  p_auth_user_id uuid default null,
+  p_secret_hash text default null,
+  p_name text default null,
+  p_lessons jsonb default '[]'::jsonb,
+  p_create boolean default false
+)
 returns table (ok boolean, reason text, xp integer, gained integer)
 language plpgsql security definer set search_path = public as $$
-declare v_hash text; v_xp integer; v_gained integer := 0; v_name text := btrim(coalesce(p_name, ''));
+declare
+  v_hash text;
+  v_xp integer;
+  v_gained integer := 0;
+  v_name text := btrim(coalesce(p_name, ''));
+  v_existing_player_id uuid;
+  v_target_player_id uuid;
 begin
-  if p_player_id is null then return query select false, 'invalid_player'::text, 0, 0; return; end if;
-  if p_secret_hash is null or p_secret_hash !~ '^[a-f0-9]{64}$' then return query select false, 'invalid_secret'::text, 0, 0; return; end if;
-  if char_length(v_name) < 1 or char_length(v_name) > 20 or v_name ~ '[<>]' or v_name ~ '[[:cntrl:]]' then return query select false, 'invalid_name'::text, 0, 0; return; end if;
-  if p_lessons is null or jsonb_typeof(p_lessons) <> 'array' then return query select false, 'invalid_lessons'::text, 0, 0; return; end if;
-  if jsonb_array_length(p_lessons) > 300 then return query select false, 'invalid_lessons'::text, 0, 0; return; end if;
-  select r.secret_hash, r.xp into v_hash, v_xp from public.pyfun_rank_players r where r.player_id = p_player_id for update;
-  if not found then
-    if not coalesce(p_create, false) then return query select true, 'not_registered'::text, 0, 0; return; end if;
-    insert into public.pyfun_rank_players (player_id, name, secret_hash, xp) values (p_player_id, v_name, p_secret_hash, 0) on conflict (player_id) do nothing;
-    select r.secret_hash, r.xp into v_hash, v_xp from public.pyfun_rank_players r where r.player_id = p_player_id for update;
-    if not found then return query select false, 'invalid_player'::text, 0, 0; return; end if;
+  if p_player_id is null and p_auth_user_id is null then
+    return query select false, 'invalid_player'::text, 0, 0;
+    return;
   end if;
-  if v_hash <> p_secret_hash then return query select false, 'invalid_secret'::text, 0, 0; return; end if;
-  update public.pyfun_rank_players set name = v_name, updated_at = now() where player_id = p_player_id and name <> v_name;
-  with raw as (select item->>'id' as lesson_id, case when (item->>'xp') ~ '^[0-9]{1,5}$' then (item->>'xp')::integer else 0 end as xp from jsonb_array_elements(p_lessons) item),
-  input as (select distinct on (lesson_id) lesson_id, xp from raw where lesson_id ~ '^[A-Za-z0-9_-]{1,80}$' and xp between 1 and 2000 order by lesson_id),
-  inserted as (insert into public.pyfun_rank_completions (player_id, lesson_id, xp) select p_player_id, input.lesson_id, input.xp from input on conflict (player_id, lesson_id) do nothing returning xp)
+
+  if p_secret_hash is null or p_secret_hash !~ '^[a-f0-9]{64}$' then
+    return query select false, 'invalid_secret'::text, 0, 0;
+    return;
+  end if;
+
+  if char_length(v_name) < 1 or char_length(v_name) > 20 or v_name ~ '[<>]' or v_name ~ '[[:cntrl:]]' then
+    return query select false, 'invalid_name'::text, 0, 0;
+    return;
+  end if;
+
+  if p_lessons is null or jsonb_typeof(p_lessons) <> 'array' then
+    return query select false, 'invalid_lessons'::text, 0, 0;
+    return;
+  end if;
+
+  if jsonb_array_length(p_lessons) > 300 then
+    return query select false, 'invalid_lessons'::text, 0, 0;
+    return;
+  end if;
+
+  if p_auth_user_id is not null then
+    select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
+    from public.pyfun_rank_players where auth_user_id = p_auth_user_id for update;
+  end if;
+
+  if v_existing_player_id is null and p_player_id is not null then
+    select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
+    from public.pyfun_rank_players where player_id = p_player_id for update;
+  end if;
+
+  if v_existing_player_id is null then
+    if not coalesce(p_create, false) then
+      return query select true, 'not_registered'::text, 0, 0;
+      return;
+    end if;
+
+    v_target_player_id := coalesce(p_player_id, gen_random_uuid());
+    insert into public.pyfun_rank_players (player_id, auth_user_id, custom_name, name, secret_hash, xp)
+    values (v_target_player_id, p_auth_user_id, null, v_name, p_secret_hash, 0)
+    on conflict (player_id) do nothing;
+
+    if p_auth_user_id is not null then
+      select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
+      from public.pyfun_rank_players where auth_user_id = p_auth_user_id for update;
+    else
+      select player_id, secret_hash, xp into v_existing_player_id, v_hash, v_xp
+      from public.pyfun_rank_players where player_id = v_target_player_id for update;
+    end if;
+
+    if v_existing_player_id is null then
+      return query select false, 'invalid_player'::text, 0, 0;
+      return;
+    end if;
+  end if;
+
+  if v_hash <> p_secret_hash then
+    return query select false, 'invalid_secret'::text, 0, 0;
+    return;
+  end if;
+
+  update public.pyfun_rank_players
+  set name = v_name,
+      custom_name = coalesce(custom_name, v_name),
+      auth_user_id = coalesce(auth_user_id, p_auth_user_id),
+      updated_at = now()
+  where player_id = v_existing_player_id;
+
+  with raw as (
+    select item->>'id' as lesson_id,
+           case when (item->>'xp') ~ '^[0-9]{1,5}$' then (item->>'xp')::integer else 0 end as xp
+    from jsonb_array_elements(p_lessons) item
+  ),
+  input as (
+    select distinct on (lesson_id) lesson_id, xp
+    from raw
+    where lesson_id ~ '^[A-Za-z0-9_-]{1,80}$' and xp between 1 and 2000
+    order by lesson_id
+  ),
+  inserted as (
+    insert into public.pyfun_rank_completions (player_id, lesson_id, xp)
+    select v_existing_player_id, input.lesson_id, input.xp
+    from input
+    on conflict (player_id, lesson_id) do nothing
+    returning xp
+  )
   select coalesce(sum(inserted.xp), 0) into v_gained from inserted;
-  if v_gained > 0 then update public.pyfun_rank_players set xp = least(xp + v_gained, 10000000), updated_at = now() where player_id = p_player_id returning xp into v_xp;
-  else select r.xp into v_xp from public.pyfun_rank_players r where r.player_id = p_player_id; end if;
+
+  if v_gained > 0 then
+    update public.pyfun_rank_players set xp = least(xp + v_gained, 10000000), updated_at = now() where player_id = v_existing_player_id returning xp into v_xp;
+  else
+    select xp into v_xp from public.pyfun_rank_players where player_id = v_existing_player_id;
+  end if;
+
   return query select true, 'ok'::text, v_xp, v_gained;
 end; $$;
-revoke all on function public.pyfun_rank_sync(uuid, text, text, jsonb, boolean) from public, anon, authenticated;
-grant execute on function public.pyfun_rank_sync(uuid, text, text, jsonb, boolean) to service_role;
+revoke all on function public.pyfun_rank_sync(uuid, uuid, text, text, jsonb, boolean) from public, anon, authenticated;
+grant execute on function public.pyfun_rank_sync(uuid, uuid, text, text, jsonb, boolean) to service_role;
 
--- Backfill biar username gak collision
 update public.pyfun_rank_players set display_name = coalesce(display_name, name) where display_name is null;
 update public.pyfun_rank_players set username = lower(regexp_replace(coalesce(username, name || '_' || substr(player_id::text, 1, 4)), '[^a-zA-Z0-9_]+', '_', 'g')) where username is null;
 
