@@ -15,7 +15,7 @@ export function GoogleLogin({ className = "" }: { className?: string }) {
       return;
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://pyfun.vercel.app";
 
     setLoading(true);
     setError("");
