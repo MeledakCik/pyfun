@@ -15,16 +15,18 @@ export function GoogleLogin({ className = "" }: { className?: string }) {
       return;
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://pyfun.vercel.app";
-
     setLoading(true);
     setError("");
 
     try {
+      // Selalu kembali ke domain yang sedang dibuka (Vercel, preview, atau
+      // localhost). Jangan pakai NEXT_PUBLIC_SITE_URL karena nilai itu bisa
+      // terlanjur diisi http://localhost:3000 di environment Vercel.
+      const redirectTo = new URL("/auth/callback", window.location.origin).toString();
       const { error } = await client.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${siteUrl}/auth/callback`,
+          redirectTo,
           queryParams: {
             access_type: "online",
             prompt: "select_account",

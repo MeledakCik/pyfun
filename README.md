@@ -104,6 +104,22 @@ menyelesaikan materi resmi.
 
 Halaman `/quest` mendukung unit yang bisa dilipat, navigator bab horizontal, batas 6 materi per unit dengan tombol "tampilkan lagi", serta pencarian dan pengelompokan materi bonus per jalur. Bagian "Buat materi sendiri" mengambil materi dari dokumentasi resmi Python dan menyimpannya ke unit "Materi Saya" di localStorage. Jika AI dipakai sebagai cadangan, setiap `solution` tetap dijalankan di Pyodide sebelum draft disimpan.
 
+## Login Google
+
+Redirect OAuth memakai **origin browser yang sedang dibuka**, jadi localhost dan domain Vercel otomatis memakai `/auth/callback` yang benar. `NEXT_PUBLIC_SITE_URL` tidak dipakai untuk login.
+
+Supabase Dashboard → **Authentication → URL Configuration**:
+
+- **Site URL**: `https://pyfun.vercel.app` (bukan `http://localhost:3000`).
+- **Redirect URLs**: `https://pyfun.vercel.app/auth/callback` dan `http://localhost:3000/auth/callback`.
+- Untuk preview deployment Vercel, tambahkan pola seperti `https://*-<team>.vercel.app/**`.
+
+Google Cloud Console → **APIs & Services → Credentials → OAuth client**:
+
+- **Authorized redirect URI**: `https://<project-ref>.supabase.co/auth/v1/callback`.
+
+Kalau setelah login masih dilempar ke localhost, hampir selalu penyebabnya Site URL Supabase masih `http://localhost:3000` atau URL callback Vercel belum masuk **Redirect URLs**. Hapus juga `NEXT_PUBLIC_SITE_URL` di environment Vercel kalau isinya localhost, lalu redeploy.
+
 ## Deploy ke Vercel
 
 1. Push ke GitHub, lalu *Add New Project* di Vercel dan pilih repo ini (preset Next.js terdeteksi otomatis).

@@ -19,13 +19,12 @@ export async function createSupabaseServerClient() {
       },
       setAll(cookiesToSet) {
         try {
-          for (const cookie of cookiesToSet) {
-            cookieStore.set(cookie.name, cookie.value, {
-              ...cookie,
-              httpOnly: true,
-              sameSite: "lax",
-              secure: process.env.NODE_ENV === "production",
-            });
+          for (const { name, value, options } of cookiesToSet) {
+            // Jangan paksa httpOnly: @supabase/ssr menyimpan sesi di cookie
+            // yang juga dibaca Supabase client di browser. Kalau httpOnly
+            // dipaksa true, login Google berhasil di server tetapi UI tetap
+            // menganggap pengguna belum login.
+            cookieStore.set(name, value, options);
           }
         } catch {
           // Server Component render dapat berjalan tanpa menulis cookie.

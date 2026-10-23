@@ -132,3 +132,32 @@ export async function submitRankCompletion(lessonId: string, name: string | null
   if (!name?.trim() || !LESSON_ID_RE.test(lessonId)) return;
   await syncRank(name, [lessonId]);
 }
+
+/**
+ * Simpan nama tampilan untuk pemain yang sedang login.
+ *
+ * Identitas tetap memakai pasangan playerId + secret perangkat, bukan
+ * `authUserId` yang dikirim dari browser. Server menentukan pemilik sesi dari
+ * cookie Supabase, sehingga nama tidak bisa dipasang ke akun lain.
+ */
+export async function saveRankName(name: string): Promise<string> {
+  const creds = credentials();
+  if (!creds) throw new Error("Penyimpanan browser tidak tersedia.");
+
+  const trimmed = name.trim().slice(0, 20);
+  if (!trimmed) throw new Error("Nama wajib diisi.");
+
+  const response = await fetch("/api/ranks", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      playerId: creds.playerId,
+      secret: creds.secret,
+      name: trimmed,
+      customName: trimmed,
+    }),
+  });
+
+  const payload = await readJson<{ custom_name?: string }>(response);
+  return payload.custom_name ?? trimmed;
+}

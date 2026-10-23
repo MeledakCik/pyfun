@@ -84,16 +84,53 @@ grant execute on function public.consume_pyfun_ai_quota(text, integer, integer) 
 -- ============================================================
 -- 3. PAPAN PERINGKAT - FINAL FIX (ini yang bikin rank lu jalan)
 -- ============================================================
--- FIX: hapus semua versi lama dulu biar gak ambiguous
-drop function if exists public.pyfun_rank_board(uuid, integer);
-drop function if exists public.pyfun_rank_sync(uuid, text, text, jsonb);
-drop function if exists public.pyfun_rank_sync(uuid, text, text, jsonb, boolean);
-drop function if exists public.pyfun_rank_sync(uuid, uuid, text, text, jsonb, boolean);
-
 create extension if not exists pgcrypto;
 
-alter table public.pyfun_rank_players add column if not exists auth_user_id uuid references auth.users(id);
-alter table public.pyfun_rank_players add column if not exists custom_name text;
+-- Tabel dasar. `if not exists` supaya aman dijalankan di project yang sudah
+-- punya tabel lama; kolom baru ditambahkan lewat alter di bawah.
+create table if not exists public.pyfun_rank_players (
+  player_id    uuid primary key,
+  user_id      uuid,
+  name         text not null,
+  secret_hash  text not null,
+  xp           integer not null default 0,
+  username     text,
+  display_name text,
+  auth_user_id uuid references auth.users(id),
+  custom_name  text,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+alter table public.pyfun_rank_players
+  add column if not exists user_id uuid,
+  add column if not exists username text,
+  add column if not exists display_name text,
+  add column if not exists auth_user_id uuid references auth.users(id),
+  add column if not exists custom_name text,
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now();
+
+-- FIX: hapus SEMUA overload lama pyfun_rank_sync. Dua versi dengan urutan
+-- parameter berbeda membuat PostgREST menolak panggilan (PGRST203).
+do $$
+declare fn record;
+begin
+  for fn in
+    select p.oid, p.proname
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'pyfun_rank_sync'
+  loop
+    execute format(
+      'drop function public.%I(%s)',
+      fn.proname,
+      pg_get_function_identity_arguments(fn.oid)
+    );
+  end loop;
+end $$;
+
+drop function if exists public.pyfun_rank_board(uuid, integer);
 
 create unique index if not exists pyfun_rank_players_auth_user_id_idx on public.pyfun_rank_players (auth_user_id) where auth_user_id is not null;
 
@@ -253,3 +290,34 @@ update public.pyfun_rank_players set display_name = coalesce(display_name, name)
 update public.pyfun_rank_players set username = lower(regexp_replace(coalesce(username, name || '_' || substr(player_id::text, 1, 4)), '[^a-zA-Z0-9_]+', '_', 'g')) where username is null;
 
 create unique index if not exists pyfun_rank_players_username_idx on public.pyfun_rank_players (username) where username is not null;
+
+-- ============================================================
+-- 4. RAPIKAN DATA LAMA
+-- ============================================================
+-- XP pemain harus sama dengan total XP dari materi yang benar-benar
+-- diselesaikan. Baris yang XP-nya tidak sinkron diperbaiki di sini.
+update public.pyfun_rank_players p
+set xp = coalesce(
+      (select sum(c.xp) from public.pyfun_rank_completions c where c.player_id = p.player_id),
+      0
+    ),
+    updated_at = now()
+where p.xp is distinct from coalesce(
+  (select sum(c.xp) from public.pyfun_rank_completions c where c.player_id = p.player_id),
+  0
+);
+
+-- Baris lama mungkin menyimpan identitas auth di kolom user_id.
+-- Hubungkan hanya kalau user-nya ada dan belum dipakai baris lain.
+update public.pyfun_rank_players p
+set auth_user_id = p.user_id
+where p.auth_user_id is null
+  and p.user_id is not null
+  and exists (select 1 from auth.users u where u.id = p.user_id)
+  and not exists (
+    select 1 from public.pyfun_rank_players q
+    where q.auth_user_id = p.user_id and q.player_id <> p.player_id
+  );
+
+-- Buang catatan kuota AI yang sudah kedaluwarsa (aman dijalankan ulang).
+delete from public.pyfun_ai_daily_usage where day < current_date - interval '30 days';

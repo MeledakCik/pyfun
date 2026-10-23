@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, UserRound } from "lucide-react";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { saveRankName } from "@/lib/rank";
 
 const MAX_NAME = 20;
 const CONTROL_RE = /[\p{Cc}\p{Cf}]/gu;
@@ -48,32 +48,8 @@ export function CustomNameModal({
     setError("");
 
     try {
-      const client = supabaseBrowser;
-      if (!client) throw new Error("Supabase belum dikonfigurasi.");
-
-      const { data: { user }, error: userError } = await client.auth.getUser();
-      if (userError || !user) throw new Error("Sesi login tidak aktif.");
-
-      const name = trimmed;
-      const response = await fetch("/api/ranks", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name,
-          customName: name,
-          authUserId: user.id,
-          completedIds: [],
-          playerId: user.id,
-          secret: `google-${user.id}-${Date.now()}`,
-        }),
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.error || "Gagal menyimpan nama custom.");
-      }
-
-      onSaved(name);
+      const saved = await saveRankName(trimmed);
+      onSaved(saved);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan nama custom.");
