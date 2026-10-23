@@ -188,6 +188,8 @@ create table if not exists public.pyfun_rank_players (
     and name !~ '[<>]'
     and name !~ '[[:cntrl:]]'
   ),
+  username    text,
+  display_name text,
   secret_hash text not null check (secret_hash ~ '^[a-f0-9]{64}$'),
   xp          integer not null default 0 check (xp >= 0 and xp <= 10000000),
   created_at  timestamptz not null default now(),
@@ -405,3 +407,22 @@ revoke all on function public.pyfun_rank_sync(uuid, text, text, jsonb, boolean)
   from public, anon, authenticated;
 grant execute on function public.pyfun_rank_sync(uuid, text, text, jsonb, boolean)
   to service_role;
+
+update public.pyfun_rank_players
+set display_name = coalesce(display_name, name)
+where display_name is null;
+
+update public.pyfun_rank_players
+set username = lower(
+  regexp_replace(
+    coalesce(username, name),
+    '[^a-zA-Z0-9_]+',
+    '_',
+    'g'
+  )
+)
+where username is null;
+
+create unique index if not exists pyfun_rank_players_username_idx
+  on public.pyfun_rank_players (username)
+  where username is not null;
