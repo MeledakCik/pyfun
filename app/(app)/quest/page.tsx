@@ -138,25 +138,35 @@ export default function QuestPage() {
 
   return (
     <div className="grid gap-8 overflow-x-hidden">
-      <section className="card relative overflow-hidden bg-gradient-to-br from-surface via-surface to-[#2a3310] p-6">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-lime/20 blur-3xl" aria-hidden />
-        <p className="text-dim">Halo, <b className="text-ink">{g.name}</b></p>
-        <h1 className="mt-1 text-3xl font-bold leading-tight sm:text-4xl">
-          {allDone ? "Semua quest selesai!" : active ? "Lanjutkan petualanganmu" : "Semua bab utama selesai!"}
-        </h1>
-        <div className="mt-5 grid gap-1.5">
-          <div className="flex justify-between text-sm text-dim"><span>Level {lv.level}</span><span>{lv.into}/{lv.size} XP</span></div>
-          <Bar value={(lv.into / lv.size) * 100} />
+      <section className="card relative overflow-hidden bg-gradient-to-br from-surface via-surface to-[#2a3310] p-6 shadow-[0_30px_40px_-30px_rgba(0,0,0,0.9)]">
+        <div
+          className="pointer-events-none absolute -right-16 -top-16 h-60 w-60 rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(200,243,34,0.18), transparent 66%)" }}
+          aria-hidden
+        />
+        <div className="relative">
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-dim">Halo, <b className="text-ink">{g.name}</b></p>
+          <h1 className="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
+            {allDone ? "Semua quest selesai!" : active ? "Lanjutkan petualanganmu" : "Semua bab utama selesai!"}
+          </h1>
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <span className="badge">Lv {lv.level}</span>
+            <span className="badge" style={{ borderColor: "rgba(224,182,255,0.25)", color: "var(--color-ink)" }}>{totalDone} selesai</span>
+          </div>
+          <div className="mt-5 grid gap-1.5">
+            <div className="flex justify-between text-sm text-dim"><span>Level {lv.level}</span><span>{lv.into}/{lv.size} XP</span></div>
+            <Bar value={(lv.into / lv.size) * 100} />
+          </div>
+          {allDone ? (
+            <Link href="/playground" className="btn btn-lime mt-5 w-full py-4 text-lg sm:w-auto sm:px-8">Latihan bebas di playground</Link>
+          ) : active ? (
+            <Link href={`/play/${active.id}`} className="btn btn-lime mt-5 w-full py-4 text-lg sm:w-auto sm:px-8">Lanjut: {active.title}</Link>
+          ) : (
+            <button type="button" onClick={() => jumpTo(BONUS_KEY, "ch-bonus")} className="btn btn-lime mt-5 w-full py-4 text-lg sm:w-auto sm:px-8">
+              Lanjut ke Materi Bonus
+            </button>
+          )}
         </div>
-        {allDone ? (
-          <Link href="/playground" className="btn btn-lime mt-5 w-full py-4 text-lg sm:w-auto sm:px-8">Latihan bebas di playground</Link>
-        ) : active ? (
-          <Link href={`/play/${active.id}`} className="btn btn-lime mt-5 w-full py-4 text-lg sm:w-auto sm:px-8">Lanjut: {active.title}</Link>
-        ) : (
-          <button type="button" onClick={() => jumpTo(BONUS_KEY, "ch-bonus")} className="btn btn-lime mt-5 w-full py-4 text-lg sm:w-auto sm:px-8">
-            Lanjut ke Materi Bonus
-          </button>
-        )}
       </section>
 
       <GenerateLesson
@@ -216,7 +226,7 @@ export default function QuestPage() {
       </section>
 
       {/* Navigator + kontrol lipat untuk jumlah bab/materi yang banyak. */}
-      <section className="card w-full min-w-0 p-4" aria-label="Peta bab">
+      <section className="card w-full min-w-0 p-4 shadow-[0_18px_28px_-26px_rgba(0,0,0,0.9)]" aria-label="Peta bab">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-dim">Peta belajar</p>
@@ -240,8 +250,8 @@ export default function QuestPage() {
             const pct = u.lessons.length ? (u.done / u.lessons.length) * 100 : 0;
             return (
               <button key={u.key} type="button" onClick={() => jumpTo(u.key, u.key)} aria-current={current ? "step" : undefined} title={u.title}
-                className={`snap-start shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-colors ${
-                  current ? "border-lime/50 bg-lime/10" : "border-line bg-surface hover:border-lime/30"
+                className={`snap-start shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all hover-lift ${
+                  current ? "border-lime/50 bg-lime/10 shadow-[0_10px_22px_-18px_rgba(200,243,34,0.8)]" : "border-line bg-surface hover:border-lime/30"
                 }`}>
                 <span className="flex items-center gap-2">
                   <span className={`grid h-6 w-6 place-items-center rounded-lg text-[11px] font-bold ${current ? "bg-lime text-lime-ink" : "bg-raised text-lime"}`}>
@@ -260,7 +270,7 @@ export default function QuestPage() {
           })}
 
           <button type="button" onClick={() => jumpTo(MY_KEY, "ch-mine")}
-            className="snap-start shrink-0 rounded-2xl border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:border-grape/30">
+            className="snap-start shrink-0 rounded-2xl border border-line bg-surface px-3 py-2.5 text-left transition-all hover-lift hover:border-grape/30">
             <span className="flex items-center gap-2">
               <span className="grid h-6 w-6 place-items-center rounded-lg bg-grape/10 text-grape"><BookOpen size={13} aria-hidden /></span>
               <span className="text-xs font-bold">Materi Saya</span>
@@ -274,8 +284,8 @@ export default function QuestPage() {
           </button>
 
           <button type="button" onClick={() => jumpTo(BONUS_KEY, "ch-bonus")} aria-current={!active ? "step" : undefined}
-            className={`snap-start shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-colors ${
-              !active ? "border-grape/50 bg-grape/10" : "border-line bg-surface hover:border-grape/30"
+            className={`snap-start shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all hover-lift ${
+              !active ? "border-grape/50 bg-grape/10 shadow-[0_10px_22px_-18px_rgba(224,182,255,0.8)]" : "border-line bg-surface hover:border-grape/30"
             }`}>
             <span className="flex items-center gap-2">
               <span className="grid h-6 w-6 place-items-center rounded-lg bg-grape/10 text-grape"><Sparkles size={13} aria-hidden /></span>

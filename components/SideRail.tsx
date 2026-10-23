@@ -29,7 +29,7 @@ export default function SideRail() {
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 flex-col gap-4 overflow-y-auto p-5 pt-20 xl:flex">
-      <section className="card p-5">
+      <section className="game-panel rounded-[1.5rem] p-5">
         <h2 className="flex items-center gap-2 font-display font-bold"><Target size={18} className="text-lime" aria-hidden />Target harian</h2>
         <div className="mt-4 flex items-center gap-4">
           <Ring value={today / GOAL} size={84} stroke={9}>
@@ -44,7 +44,7 @@ export default function SideRail() {
         <div className="mt-4 flex justify-between">
           {week.map((w, i) => (
             <div key={i} className="grid justify-items-center gap-1.5">
-              <span className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold ${w.on ? "bg-lime text-lime-ink" : "bg-raised text-faint"}`}>{w.on ? "✓" : ""}</span>
+              <span className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold ${w.on ? "bg-lime text-lime-ink shadow-[0_10px_18px_-16px_rgba(200,243,34,0.9)]" : "bg-raised text-faint"}`}>{w.on ? "✓" : ""}</span>
               <span className="text-[11px] uppercase text-dim">{w.l}</span>
             </div>
           ))}
@@ -61,7 +61,7 @@ export default function SideRail() {
 
       {/* Materi bonus dari Supabase — user tidak perlu token Groq sendiri */}
       <Link href="/quest#ch-bonus" className="card group flex items-start gap-3 p-4 transition-colors hover:border-lime/40">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-raised text-lime transition-transform group-hover:scale-105"><Sparkles size={18} aria-hidden /></span>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-lime/10 text-lime shadow-[0_12px_24px_-18px_rgba(200,243,34,0.8)] transition-transform group-hover:scale-105"><Sparkles size={18} aria-hidden /></span>
         <span className="min-w-0 flex-1 text-sm">
           <span className="flex items-center justify-between gap-2">
             <b className="font-display">Materi Bonus</b>

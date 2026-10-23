@@ -5,12 +5,15 @@ import {
   checkPythonTopic,
   generateLesson,
   hasDangerousCode,
+  looksLikePromptInjection,
   sanitizeLesson,
   type Level,
   type RepairContext,
 } from "@/lib/ai";
 import { adminClient } from "@/lib/supabase-admin";
 import { bodyTooLarge, clientIp } from "@/lib/rate-limit";
+import { cleanTopic } from "@/lib/sanitize";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -40,12 +43,14 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 /** Topik hanya berupa teks biasa: kontrol dihapus, whitespace dirapikan. */
 function normalizeTopic(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.replace(/\p{Cc}/gu, "").replace(/\s+/g, " ").trim();
+  return cleanTopic(value);
 }
 
 export async function POST(req: Request) {
   try {
+    if (!isSameOrigin(req)) {
+      return json({ error: CROSS_ORIGIN_ERROR }, 403);
+    }
     if (bodyTooLarge(req, MAX_BODY)) {
       return json({ error: "Body permintaan terlalu besar." }, 413);
     }
@@ -70,6 +75,9 @@ export async function POST(req: Request) {
     const topicLength = Array.from(topic).length;
     if (topicLength < 3 || topicLength > 80) {
       return json({ error: "Topik harus 3-80 karakter." }, 400);
+    }
+    if (looksLikePromptInjection(topic)) {
+      return json({ error: "Topik berisi instruksi yang tidak diizinkan." }, 422);
     }
 
     const level: Level = b.level === "menengah" ? "menengah" : "pemula";

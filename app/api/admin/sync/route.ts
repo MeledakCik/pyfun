@@ -6,6 +6,7 @@ import { bodyTooLarge, clientIp, rateLimit } from "@/lib/rate-limit";
 import { LESSONS_TABLE } from "@/lib/supabase";
 import { BUNDLED } from "@/lib/lessons";
 import { BONUS_CATALOG } from "@/lib/bonus";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 import type { Lesson } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -83,6 +84,9 @@ function parseMode(body: unknown): Mode {
  * terpusat di Supabase agar semua materi juga tersimpan di database.
  */
 export async function POST(req: Request) {
+  if (!isSameOrigin(req)) {
+    return NextResponse.json({ error: CROSS_ORIGIN_ERROR }, { status: 403 });
+  }
   const limited = rateLimit(`sync:${clientIp(req)}`, 3, 60_000);
   if (!limited.ok) {
     return NextResponse.json(

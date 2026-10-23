@@ -13,16 +13,16 @@ function Podium({ entries }: { entries: RankEntry[] }) {
   const heights: Record<number, string> = { 1: "h-32", 2: "h-24", 3: "h-20" };
 
   return (
-    <div className="card flex items-end justify-center gap-3 overflow-hidden bg-gradient-to-b from-surface to-[#1f260c] px-4 pt-8" aria-label="Tiga besar">
+    <div className="card flex items-end justify-center gap-3 overflow-hidden bg-gradient-to-b from-surface via-surface to-[#1f260c] px-4 pt-8 shadow-[0_28px_38px_-30px_rgba(0,0,0,0.9)]" aria-label="Tiga besar">
       {order.map((r) => (
         <div key={r.id} className="flex w-full max-w-[140px] min-w-0 flex-1 flex-col items-center">
           {r.position === 1 && <Crown size={26} className="mb-1 text-lime" aria-label="Juara 1" />}
-          <span className={`grid h-14 w-14 place-items-center rounded-2xl font-display text-xl font-bold sm:h-16 sm:w-16 ${r.me ? "bg-lime text-lime-ink glow-lime" : "bg-raised"}`}>
+          <span className={`grid h-14 w-14 place-items-center rounded-2xl font-display text-xl font-bold sm:h-16 sm:w-16 ${r.me ? "bg-lime text-lime-ink glow-lime" : "bg-raised shadow-[0_16px_26px_-20px_rgba(0,0,0,0.95)]"}`}>
             {r.name.charAt(0).toUpperCase() || "?"}
           </span>
           <p className="mt-2 max-w-full truncate font-bold">{r.name}</p>
           <p className="text-sm font-bold text-lime">{r.xp} XP</p>
-          <div className={`mt-3 grid w-full place-items-start rounded-t-2xl border border-b-0 border-line bg-raised pt-2 text-center font-display text-2xl font-bold text-dim ${heights[r.position] ?? "h-20"}`}>
+          <div className={`mt-3 grid w-full place-items-start rounded-t-2xl border border-b-0 border-line bg-raised pt-2 text-center font-display text-2xl font-bold text-dim shadow-[0_-16px_28px_-24px_rgba(200,243,34,0.5)] ${heights[r.position] ?? "h-20"}`}>
             <span className="w-full">{r.position}</span>
           </div>
         </div>
@@ -45,9 +45,6 @@ export default function Ranks() {
     setLoading(true);
     setError("");
 
-    // Halaman ini hanya mendaftarkan/menyegarkan nama. XP rank bertambah dari
-    // event penyelesaian satu materi di app/play/[id], bukan dari progres lokal
-    // yang bisa diedit lewat localStorage.
     const request = g.name ? syncRank(g.name, []) : fetchRankBoard();
 
     request
@@ -136,7 +133,7 @@ export default function Ranks() {
               {board.entries.slice(3).map((entry) => (
                 <li
                   key={entry.id}
-                  className={`flex items-center gap-4 rounded-2xl border p-4 ${entry.me ? "border-lime/50 bg-[#222a0d]" : "border-line bg-surface"}`}
+                  className={`flex items-center gap-4 rounded-2xl border p-4 transition-all hover-lift ${entry.me ? "border-lime/50 bg-[#222a0d]" : "border-line bg-surface"}`}
                 >
                   <span className="w-6 text-center font-display text-lg font-bold text-dim">{entry.position}</span>
                   <span className={`grid h-10 w-10 place-items-center rounded-xl font-display font-bold ${entry.me ? "bg-lime text-lime-ink" : "bg-raised"}`}>

@@ -1,4 +1,5 @@
 import type { CodeStep, Lesson, LearnStep, QuizStep } from "./types";
+import { EXTRA_LESSONS, EXTRA_TRACKS } from "./extra";
 
 const learn = (title: string, body: string, code?: string): LearnStep => ({ type: "learn", title, body, code });
 const quiz = (
@@ -20,6 +21,7 @@ const code = (
  * "Fondasi Bonus", lalu materi terkurasi tampil setelahnya.
  */
 export const BONUS_TRACKS = [
+  ...EXTRA_TRACKS,
   "Fondasi Bonus",
   "Automasi & File",
   "Web Scraping & Data",
@@ -440,6 +442,7 @@ print("PERIKSA" if bocor else "AMAN")`,
 ]);
 
 export const BONUS_CATALOG: Lesson[] = [
+  ...EXTRA_LESSONS,
   ...automasi,
   ...scraping,
   ...modeling,

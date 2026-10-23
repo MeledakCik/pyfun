@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { bodyTooLarge, clientIp, rateLimit } from "@/lib/rate-limit";
 import { generateLesson, type Level } from "@/lib/ai";
+import { cleanTopic } from "@/lib/sanitize";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 export const maxDuration = 30; // detik, untuk Vercel
@@ -12,6 +14,9 @@ export const maxDuration = 30; // detik, untuk Vercel
  * Untuk seeding banyak sekaligus, pakai /api/admin/seed.
  */
 export async function POST(req: Request) {
+  if (!isSameOrigin(req)) {
+    return NextResponse.json({ error: CROSS_ORIGIN_ERROR }, { status: 403 });
+  }
   const limited = rateLimit(`generate:${clientIp(req)}`, 10, 60_000);
   if (!limited.ok) {
     return NextResponse.json(
@@ -40,7 +45,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const topic = typeof body?.topic === "string" ? body.topic.trim().slice(0, 120) : "";
+  const topic = cleanTopic(body?.topic);
   const level: Level = body?.level === "menengah" ? "menengah" : "pemula";
   if (topic.length < 3) return NextResponse.json({ error: "Tulis topik minimal 3 huruf." }, { status: 400 });
 

@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUNDLED, fetchSupabaseLessons } from "@/lib/lessons";
 import { bodyTooLarge, clientIp, rateLimit } from "@/lib/rate-limit";
 import { adminClient } from "@/lib/supabase-admin";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -171,6 +172,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOrigin(request)) {
+    return errorResponse(CROSS_ORIGIN_ERROR, 403);
+  }
   const limit = rateLimit(`rank:post:${clientIp(request)}`, 30, 60_000);
   if (!limit.ok) {
     return errorResponse("Terlalu banyak permintaan. Coba lagi sebentar.", 429, limit.retryAfter);

@@ -2,6 +2,8 @@ import "server-only";
 import { NextResponse } from "next/server";
 import type { LearnStep, Lesson } from "@/lib/types";
 import { bodyTooLarge, clientIp, rateLimit } from "@/lib/rate-limit";
+import { cleanTopic } from "@/lib/sanitize";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
@@ -62,8 +64,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   });
 
 function normalizeTopic(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.replace(/\p{Cc}/gu, "").replace(/\s+/g, " ").trim();
+  return cleanTopic(value);
 }
 
 function keywordScore(text: string, keyword: string): number {
@@ -332,6 +333,9 @@ function fallbackLesson(topic: string, level: "pemula" | "menengah", target: Doc
 
 export async function POST(req: Request) {
   try {
+    if (!isSameOrigin(req)) {
+      return json({ error: CROSS_ORIGIN_ERROR }, 403);
+    }
     if (bodyTooLarge(req, MAX_BODY)) {
       return json({ error: "Body permintaan terlalu besar." }, 413);
     }

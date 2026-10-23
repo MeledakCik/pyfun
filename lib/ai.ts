@@ -1,5 +1,6 @@
 import "server-only";
-import type { Lesson, Step } from "./types";
+import type { Lesson } from "./types";
+import { cleanCode, cleanText, LIMITS, sanitizeSteps, validLessonId } from "./sanitize";
 
 /**
  * Logika generasi materi via Groq.
@@ -60,7 +61,7 @@ async function groqFetch(payload: unknown, key: string, timeoutMs: number): Prom
   }
 }
 
-const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+const str = (v: unknown, max: number) => cleanText(v, max);
 
 /**
  * Model sering mengirim "\\n" sebagai dua karakter (backslash + n) alih-alih
@@ -83,7 +84,8 @@ function unescapeText(s: string): string {
 }
 
 /** Sama seperti str(), tapi penanda escape teks diuraikan lebih dulu. */
-const code = (v: unknown, max: number) => unescapeText(str(v, max)).slice(0, max);
+const code = (v: unknown, max: number) =>
+  cleanCode(unescapeText(typeof v === "string" ? v : ""), max);
 
 export type TopicCheck = { ok: true; isPython: boolean } | { ok: false };
 
@@ -125,11 +127,43 @@ export async function checkPythonTopic(topic: string, key: string): Promise<Topi
   }
 }
 
-const DANGEROUS_MODULES = ["os", "subprocess", "socket", "urllib"] as const;
-const DANGEROUS_CALL = /\b(?:open|eval|exec|__import__)\s*\(/;
+const DANGEROUS_MODULES = [
+  "os",
+  "subprocess",
+  "socket",
+  "urllib",
+  "http",
+  "ftplib",
+  "ctypes",
+  "importlib",
+  "builtins",
+  "sys",
+  "shutil",
+  "js",
+  "pyodide",
+  "pyodide_js",
+  "micropip",
+] as const;
+const DANGEROUS_CALL = /\b(?:eval|exec|compile|__import__|breakpoint)\s*\(/;
 // Deteksi import juga setelah `;` atau `:` agar satu baris seperti
 // `x = 1; import os` tidak lolos dari filter.
 const IMPORT_LINE = /(?:^|[;\n:])\s*(?:import|from)\b/;
+
+const ALLOWED_ICONS = new Set([
+  "Terminal", "Package", "Calculator", "GitBranch", "Repeat", "List", "BookOpen",
+  "Braces", "Code2", "Database", "Globe", "Type", "Sparkles",
+]);
+
+/**
+ * Topik dikirim ke model sebagai data JSON, tetapi beberapa pola instruksi
+ * tetap ditolak lebih awal agar prompt injection tidak bergantung pada
+ * kepatuhan model. Ini bukan pengganti validasi output.
+ */
+const INJECTION = /(?:ignore|abaikan|lupakan|forget)\s+(?:all|semua|previous|sebelumnya|instruksi|instructions?)|(?:^|\s)(?:system|assistant|developer)\s*:|<\s*\/?\s*(?:system|assistant|user)\s*>|kamu sekarang adalah|you are now|act as (?:a|an|the)\b|jailbreak|reveal (?:the )?(?:prompt|secret)/i;
+
+export function looksLikePromptInjection(topic: string): boolean {
+  return INJECTION.test(topic) || /[\u0000-\u001f\u007f]/.test(topic);
+}
 
 /** Cek sederhana pada field yang bisa dieksekusi; bukan sandbox, hanya filter awal. */
 export function hasDangerousCode(lesson: Lesson): boolean {
@@ -167,54 +201,28 @@ export function sanitizeLesson(raw: unknown, level: Level, id: string, chapter: 
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (!Array.isArray(r.steps)) return null;
+  if (!validLessonId(id)) return null;
 
-  const steps: Step[] = [];
-  for (const s of (r.steps as unknown[]).slice(0, 10)) {
-    if (!s || typeof s !== "object") continue;
-    const step = s as Record<string, unknown>;
-
-    if (step.type === "learn" && step.body) {
-      steps.push({
-        type: "learn",
-        title: str(step.title, 60) || "Konsep",
-        body: str(step.body, 700),
-        code: step.code ? str(step.code, 600) : undefined,
-      });
-    } else if (step.type === "quiz" && Array.isArray(step.options) && step.options.length >= 2) {
-      const options = (step.options as unknown[]).slice(0, 4).map((o: unknown) => str(o, 120));
-      const answer = Number(step.answer);
-      if (Number.isInteger(answer) && answer >= 0 && answer < options.length) {
-        const wrong = Array.isArray(step.wrong)
-          ? options.map((_, i) => str((step.wrong as unknown[])[i], 200))
-          : undefined;
-        steps.push({
-          type: "quiz",
-          q: str(step.q, 200),
-          options,
-          answer,
-          explain: str(step.explain, 300),
-          wrong: wrong?.some((reason) => reason.length > 0) ? wrong : undefined,
-        });
-      }
-    } else if (step.type === "code" && step.prompt && step.solution) {
-      steps.push({
-        type: "code",
-        prompt: code(step.prompt, 300),
-        starter: code(step.starter, 600),
-        out: code(step.out, 400),
-        hint: step.hint ? code(step.hint, 200) : undefined,
-        hint2: step.hint2 ? code(step.hint2, 200) : undefined,
-        solution: code(step.solution, 800),
-      });
+  // Model kadang mengirim "\\n" dua karakter. Normalisasi hanya field kode
+  // dan output, lalu serahkan semua batas panjang ke sanitizeSteps.
+  const prepared = r.steps.slice(0, LIMITS.steps).map((step) => {
+    if (!step || typeof step !== "object") return step;
+    const copy = { ...(step as Record<string, unknown>) };
+    for (const key of ["code", "starter", "solution", "out"]) {
+      if (typeof copy[key] === "string") copy[key] = unescapeText(copy[key] as string);
     }
-  }
+    return copy;
+  });
+
+  const steps = sanitizeSteps(prepared, { maxSteps: 10, requireSolutions: true });
   if (steps.length < 3) return null;
 
+  const icon = str(r.icon, LIMITS.icon);
   return {
     id,
-    chapter,
+    chapter: cleanText(chapter, LIMITS.chapter) || "Materi Bonus",
     title: str(r.title, 40) || "Materi baru",
-    icon: str(r.icon, 20) || "Sparkles",
+    icon: ALLOWED_ICONS.has(icon) ? icon : "Sparkles",
     xp: level === "menengah" ? 160 : 120,
     minutes: Math.max(3, Math.min(10, steps.length)),
     steps,

@@ -1,6 +1,7 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import { BADGES, dayKey, daysBetween } from "./game";
+import { cleanCode, cleanName, sanitizeGeneratedLesson, validLessonId } from "./sanitize";
 import type { Lesson } from "./types";
 
 export type Progress = { stars: number; done: boolean };
@@ -40,7 +41,8 @@ export const INITIAL: Game = {
 };
 
 const GENERATED_LIMIT = 50;
-const STEP_TYPES = new Set(["learn", "quiz", "code", "predict", "debug"]);
+const MAX_CODE = 20_000;
+const MAX_IMPORT = 1_000_000;
 
 let state: Game = INITIAL;
 let hydrated = false;
@@ -52,17 +54,6 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 const finite = (v: unknown, fallback: number) =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
 
-/** Validasi minimum untuk data materi yang berasal dari localStorage. */
-function isGeneratedLesson(value: unknown): value is Lesson {
-  if (!isRecord(value) || value.source !== "generated") return false;
-  if (typeof value.id !== "string" || !value.id.startsWith("gen-")) return false;
-  if (typeof value.chapter !== "string" || typeof value.title !== "string") return false;
-  if (!Array.isArray(value.steps) || value.steps.length === 0) return false;
-  return value.steps.every(
-    (step) => isRecord(step) && typeof step.type === "string" && STEP_TYPES.has(step.type),
-  );
-}
-
 /**
  * Migrasi state lama (`v: 1`) ke schema saat ini.
  * Field nyawa (`hearts`, `heartsAt`) dan field sensitif lama (`custom`, `apiKey`)
@@ -73,15 +64,16 @@ function migrate(raw: unknown): Game {
   const progress: Game["progress"] = {};
   if (isRecord(old.progress)) {
     for (const [id, value] of Object.entries(old.progress)) {
-      if (!isRecord(value) || typeof value.done !== "boolean") continue;
-      progress[id] = { done: value.done, stars: finite(value.stars, 0) };
+      if (!validLessonId(id) || !isRecord(value) || typeof value.done !== "boolean") continue;
+      progress[id] = { done: value.done, stars: Math.max(0, Math.min(3, finite(value.stars, 0))) };
     }
   }
 
   const history: Game["history"] = {};
   if (isRecord(old.history)) {
     for (const [day, xp] of Object.entries(old.history)) {
-      if (typeof xp === "number" && Number.isFinite(xp)) history[day] = xp;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      if (typeof xp === "number" && Number.isFinite(xp) && xp >= 0) history[day] = Math.min(xp, 1_000_000);
     }
   }
 
@@ -89,27 +81,30 @@ function migrate(raw: unknown): Game {
   const seenGenerated = new Set<string>();
   if (Array.isArray(old.generated)) {
     for (const value of old.generated) {
-      if (!isGeneratedLesson(value) || seenGenerated.has(value.id)) continue;
-      seenGenerated.add(value.id);
-      generated.push(value);
+      const entry = sanitizeGeneratedLesson(value);
+      if (!entry || seenGenerated.has(entry.id)) continue;
+      seenGenerated.add(entry.id);
+      generated.push(entry);
       if (generated.length >= GENERATED_LIMIT) break;
     }
   }
 
+  const name = cleanName(old.name);
+
   return {
     v: 2,
-    name: typeof old.name === "string" ? old.name : null,
-    joinedAt: finite(old.joinedAt, 0),
-    xp: finite(old.xp, 0),
-    streak: finite(old.streak, 0),
-    bestStreak: finite(old.bestStreak, 0),
-    lastDay: typeof old.lastDay === "string" ? old.lastDay : null,
+    name: name || null,
+    joinedAt: Math.max(0, finite(old.joinedAt, 0)),
+    xp: Math.max(0, finite(old.xp, 0)),
+    streak: Math.max(0, finite(old.streak, 0)),
+    bestStreak: Math.max(0, finite(old.bestStreak, 0)),
+    lastDay: typeof old.lastDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(old.lastDay) ? old.lastDay : null,
     progress,
     history,
     badges: Array.isArray(old.badges)
-      ? old.badges.filter((b): b is string => typeof b === "string")
+      ? [...new Set(old.badges.filter((b): b is string => typeof b === "string" && b.length <= 40))]
       : [],
-    code: typeof old.code === "string" ? old.code : INITIAL.code,
+    code: cleanCode(old.code, MAX_CODE) || INITIAL.code,
     generated,
   };
 }
@@ -119,7 +114,7 @@ function load() {
   hydrated = true;
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) {
+    if (raw && raw.length <= MAX_IMPORT) {
       state = migrate(JSON.parse(raw));
       // Simpan hasil migrasi agar field lama (mis. nyawa) tidak terbaca lagi.
       localStorage.setItem(KEY, JSON.stringify(state));
@@ -150,18 +145,18 @@ export function useGame() {
 
 export const actions = {
   start(name: string) {
-    commit({ ...state, name: name.trim() || "Pelajar", joinedAt: state.joinedAt || Date.now() });
+    commit({ ...state, name: cleanName(name) || "Pelajar", joinedAt: state.joinedAt || Date.now() });
   },
   rename(name: string) {
-    commit({ ...state, name: name.trim() || state.name });
+    commit({ ...state, name: cleanName(name) || state.name });
   },
   saveCode(code: string) {
-    commit({ ...state, code });
+    commit({ ...state, code: cleanCode(code, MAX_CODE) });
   },
   /** Simpan draft AI yang sudah lolos validasi ke koleksi lokal "Materi Saya". */
   saveGenerated(lesson: Lesson) {
     const now = Date.now();
-    const entry: Lesson = {
+    const entry = sanitizeGeneratedLesson({
       ...lesson,
       id: `gen-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       chapter: "Materi Saya",
@@ -170,7 +165,8 @@ export const actions = {
       track: "Materi Saya",
       boss: false,
       createdAt: now,
-    };
+    });
+    if (!entry) throw new Error("Materi tidak valid dan tidak disimpan.");
     commit({
       ...state,
       generated: [entry, ...state.generated].slice(0, GENERATED_LIMIT),
@@ -220,7 +216,15 @@ export const actions = {
     return JSON.stringify(state, null, 2);
   },
   importJson(raw: string) {
-    const parsed: unknown = JSON.parse(raw);
+    if (typeof raw !== "string" || raw.length > MAX_IMPORT) {
+      throw new Error("File terlalu besar atau tidak valid");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error("File bukan JSON yang valid");
+    }
     if (!isRecord(parsed) || (parsed.v !== 1 && parsed.v !== 2)) {
       throw new Error("Format file tidak dikenali");
     }

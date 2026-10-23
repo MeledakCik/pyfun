@@ -1,4 +1,5 @@
 "use client";
+import { compilePattern, LIMITS } from "./sanitize";
 import type { CodeStep, Lesson } from "./types";
 
 /**
@@ -7,6 +8,27 @@ import type { CodeStep, Lesson } from "./types";
  * dimatikan paksa kalau kode pengguna berputar tanpa henti (timeout).
  */
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
+const MAX_SOURCE = 20_000;
+const MAX_OUTPUT = 60_000;
+
+/**
+ * Filter awal sebelum kode dikirim ke Pyodide. Pyodide berjalan di Web Worker
+ * tanpa akses DOM/jaringan, tetapi modul seperti `js`/`pyodide_js` bisa
+ * menjembatani JavaScript. Blokir modul tersebut dan primitif escape yang
+ * tidak dibutuhkan materi. Ini bukan sandbox sempurna—timeout worker tetap
+ * menjadi lapisan terakhir.
+ */
+const BLOCKED_IMPORT =
+  /(?:^|[;\n:])\s*(?:import|from)\s+(?:os|sys|subprocess|socket|urllib|http|ftplib|ctypes|importlib|builtins|shutil|js|pyodide|pyodide_js|micropip)\b/;
+const BLOCKED_CALL = /\b(?:eval|exec|compile|__import__|breakpoint)\s*\(|__builtins__|\bgetattr\s*\(\s*__builtins__/;
+
+export function unsafeCodeReason(source: string): string | null {
+  if (source.length > MAX_SOURCE) return "Kode terlalu panjang (maksimal 20.000 karakter).";
+  if (BLOCKED_IMPORT.test(source) || BLOCKED_CALL.test(source)) {
+    return "Kode memakai modul atau fungsi yang tidak diizinkan di playground.";
+  }
+  return null;
+}
 
 const WORKER_SRC = `
 let ready;
@@ -25,11 +47,16 @@ self.onmessage = async (e) => {
   let py;
   try { py = await ready; } catch { return; }
   let out = "";
-  py.setStdout({ batched: (s) => { out += s + "\\n"; } });
-  py.setStderr({ batched: (s) => { out += s + "\\n"; } });
+  let truncated = false;
+  const push = (s) => {
+    if (out.length >= ${MAX_OUTPUT}) { truncated = true; return; }
+    out += String(s).slice(0, ${MAX_OUTPUT} - out.length) + "\\n";
+  };
+  py.setStdout({ batched: push });
+  py.setStderr({ batched: push });
   try {
     await py.runPythonAsync(code);
-    self.postMessage({ id, ok: true, out });
+    self.postMessage({ id, ok: true, out: truncated ? out + "[output dipotong]" : out });
   } catch (err) {
     const lines = String(err.message || err).trim().split("\\n");
     const at = lines.findIndex((l) => l.includes('File "<exec>"'));
@@ -72,6 +99,12 @@ export function warmUp() {
 export type RunResult = { ok: boolean; out: string; error?: string; timedOut?: boolean };
 
 export async function runPython(code: string, timeoutMs = 8000): Promise<RunResult> {
+  if (typeof code !== "string") {
+    return { ok: false, out: "", error: "Kode tidak valid." };
+  }
+  const blocked = unsafeCodeReason(code);
+  if (blocked) return { ok: false, out: "", error: blocked };
+
   const e = engine ?? spawn();
   // waktu muat Pyodide tidak dihitung ke timeout kode
   if (!(await e.ready)) {
@@ -103,8 +136,13 @@ export function checkCode(
   if (!res.ok) {
     return { pass: false, reason: "Kode belum bisa dijalankan. Baca pesan error di panel output, perbaiki, lalu coba lagi." };
   }
-  for (const pattern of step.need ?? []) {
-    if (!new RegExp(pattern).test(source)) {
+  const patterns = Array.isArray(step.need) ? step.need.slice(0, LIMITS.patterns) : [];
+  for (const pattern of patterns) {
+    const re = compilePattern(pattern);
+    if (!re) {
+      return { pass: false, reason: "Pola pemeriksaan materi tidak valid. Hubungi admin." };
+    }
+    if (!re.test(source)) {
       return { pass: false, reason: `Kode belum memenuhi pola yang diminta: \`${pattern}\`.` };
     }
   }

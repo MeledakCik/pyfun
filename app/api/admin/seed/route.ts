@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { bodyTooLarge, clientIp, rateLimit } from "@/lib/rate-limit";
 import { LESSONS_TABLE } from "@/lib/supabase";
 import { generateLesson, slugify, type Level } from "@/lib/ai";
+import { cleanTopic, cleanText } from "@/lib/sanitize";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // detik, untuk Vercel
@@ -46,20 +48,20 @@ function parseTopics(body: unknown): TopicReq[] {
   if (Array.isArray(raw)) {
     list = raw
       .map((t: unknown) => {
-        if (typeof t === "string") return { topic: t.trim().slice(0, 120), level: bodyLevel };
+        if (typeof t === "string") return { topic: cleanTopic(t), level: bodyLevel };
         if (t && typeof t === "object") {
           const o = t as Record<string, unknown>;
           if (typeof o.topic !== "string") return null;
           return {
-            topic: o.topic.trim().slice(0, 120),
+            topic: cleanTopic(o.topic),
             level: o.level === "menengah" ? "menengah" : bodyLevel,
           };
         }
         return null;
       })
       .filter((t): t is TopicReq => !!t && t.topic.length >= 3);
-  } else if (typeof b.topic === "string" && b.topic.trim().length >= 3) {
-    list = [{ topic: b.topic.trim().slice(0, 120), level: bodyLevel }];
+  } else if (typeof b.topic === "string" && cleanTopic(b.topic).length >= 3) {
+    list = [{ topic: cleanTopic(b.topic), level: bodyLevel }];
   } else {
     list = PRESET_TOPICS;
   }
@@ -87,6 +89,9 @@ function parseTopics(body: unknown): TopicReq[] {
  *     "track": "Automasi & File", "limit": 10 }
  */
 export async function POST(req: Request) {
+  if (!isSameOrigin(req)) {
+    return NextResponse.json({ error: CROSS_ORIGIN_ERROR }, { status: 403 });
+  }
   // Batasi brute force secret dan pemakaian Groq per IP.
   const limited = rateLimit(`seed:${clientIp(req)}`, 5, 60_000);
   if (!limited.ok) {
@@ -128,9 +133,9 @@ export async function POST(req: Request) {
   }
   const b = (body ?? {}) as Record<string, unknown>;
   const chapter =
-    typeof b.chapter === "string" && b.chapter.trim() ? b.chapter.trim().slice(0, 40) : "Materi Bonus";
+    typeof b.chapter === "string" && b.chapter.trim() ? cleanText(b.chapter, 40) : "Materi Bonus";
   const track =
-    typeof b.track === "string" && b.track.trim() ? b.track.trim().slice(0, 40) : "Materi Bonus";
+    typeof b.track === "string" && b.track.trim() ? cleanText(b.track, 40) : "Materi Bonus";
 
   const all = parseTopics(body);
   const limit = Math.min(MAX_PER_REQUEST, Math.max(1, Number(b.limit) || all.length || 1));

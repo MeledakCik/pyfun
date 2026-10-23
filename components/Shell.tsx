@@ -30,18 +30,31 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-6xl">
       {/* Sidebar kiri — tampil di md ke atas */}
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r border-line p-5 md:flex">
-        <Link href="/quest" className="mb-6 px-3"><Logo size={30} /></Link>
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-3 border-r border-line p-5 md:flex">
+        <Link href="/quest" className="mb-4 px-3"><Logo size={30} /></Link>
+
+        <div className="game-panel rounded-2xl p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-dim">Status</p>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div>
+              <p className="font-display text-lg font-bold leading-none">{g.xp}</p>
+              <p className="text-[11px] text-dim">XP total</p>
+            </div>
+            <span className="badge">Lv {rank.name}</span>
+          </div>
+        </div>
+
         {NAV.map(({ href, label, Icon }) => {
           const on = path.startsWith(href);
           return (
             <Link key={href} href={href} aria-current={on ? "page" : undefined}
-              className={`flex items-center gap-3 rounded-2xl px-4 py-3 font-display font-bold transition-all ${on ? "bg-lime text-lime-ink shadow-[0_4px_0_var(--color-lime-deep)]" : "text-dim hover:bg-surface hover:text-ink"}`}>
-              <Icon size={20} aria-hidden />{label}
+              className={`hover-lift flex items-center gap-3 rounded-2xl px-4 py-3 font-display font-bold transition-all ${on ? "bg-lime text-lime-ink shadow-[0_5px_0_rgba(138,165,22,0.9)]" : "text-dim hover:bg-surface hover:text-ink"}`}>
+              <span className={`grid h-8 w-8 place-items-center rounded-xl ${on ? "bg-lime-ink/10" : "bg-raised"}`}><Icon size={18} aria-hidden /> </span>
+              {label}
             </Link>
           );
         })}
-        <Link href="/profile" className="card mt-auto flex items-center gap-3 p-3 hover:border-lime/40">
+        <Link href="/profile" className="card hover-lift mt-auto flex items-center gap-3 p-3 hover:border-lime/40">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-lime font-display text-lg font-bold text-lime-ink">{g.name[0].toUpperCase()}</span>
           <span className="min-w-0"><b className="block truncate font-display">{g.name}</b><span className="text-xs" style={{ color: rank.color }}>{rank.name}</span></span>
         </Link>
@@ -49,7 +62,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
       {/* Konten utama */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between bg-bg/60 px-5 py-3.5 backdrop-blur-md md:justify-end">
+        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-bg/95 px-5 py-3.5 shadow-[0_1px_0_rgba(255,255,255,0.02)] md:justify-end">
           <Link href="/quest" className="md:hidden"><Logo /></Link>
           <Stats streak={g.streak} xp={g.xp} />
         </header>
@@ -61,7 +74,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
       {/* Bottom nav — hanya mobile (hidden md:) */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-line bg-bg/95 backdrop-blur-xl md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-line bg-bg shadow-[0_-12px_28px_-22px_rgba(0,0,0,0.95)] md:hidden"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)", paddingTop: "0.5rem" }}
         aria-label="Navigasi utama"
       >
@@ -70,7 +83,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           return (
             <Link key={href} href={href} aria-current={on ? "page" : undefined}
               className={`flex flex-col items-center gap-0.5 rounded-2xl py-1 text-[11px] font-bold ${on ? "text-lime" : "text-dim"}`}>
-              <span className={`grid h-9 w-12 place-items-center rounded-full transition-colors ${on ? "bg-lime/15" : ""}`}><Icon size={20} aria-hidden /></span>
+              <span className={`grid h-9 w-12 place-items-center rounded-full transition-colors ${on ? "bg-lime/15" : "bg-transparent"}`}><Icon size={20} aria-hidden /></span>
               {label}
             </Link>
           );

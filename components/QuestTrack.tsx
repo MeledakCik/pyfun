@@ -40,16 +40,21 @@ export function UnitHeader({
   const meta = description ?? `${total} quest · ${fmt(totalXp)} XP`;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-4 sm:p-5">
+    <div className="relative overflow-hidden rounded-[1.6rem] border border-line bg-surface p-4 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9)] sm:p-5">
       <span
         aria-hidden
-        className={`pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full blur-3xl ${bonus ? "bg-grape/15" : "bg-lime/10"}`}
+        className="pointer-events-none absolute -right-14 -top-14 h-40 w-40 rounded-full opacity-80"
+        style={{
+          background: bonus
+            ? "radial-gradient(circle, rgba(224,182,255,0.18), transparent 68%)"
+            : "radial-gradient(circle, rgba(200,243,34,0.18), transparent 68%)",
+        }}
       />
       <div className="relative flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${
-              bonus ? "border-grape/30 bg-grape/10 text-grape" : "border-lime/20 bg-raised text-lime"
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border shadow-[0_10px_18px_-16px_rgba(0,0,0,1)] ${
+              bonus ? "border-grape/30 bg-grape/10 text-grape" : "border-lime/20 bg-lime/10 text-lime"
             }`}
           >
             {bonus ? <Sparkles size={18} aria-hidden /> : <span className="font-display text-sm font-bold">{eyebrow.replace(/\D/g, "")}</span>}
@@ -60,9 +65,7 @@ export function UnitHeader({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="rounded-full bg-raised px-3 py-1.5 font-display text-xs font-bold text-lime sm:text-sm">
-            {loading ? "…" : `${done}/${total}`}
-          </span>
+          <span className="badge">{loading ? "…" : `${done}/${total}`}</span>
           {onToggle && (
             <button
               type="button"
@@ -70,7 +73,7 @@ export function UnitHeader({
               aria-expanded={open}
               aria-controls={contentId}
               aria-label={open ? `Sembunyikan ${title}` : `Tampilkan ${title}`}
-              className={`grid h-9 w-9 place-items-center rounded-full border transition-colors ${
+              className={`grid h-9 w-9 place-items-center rounded-full border transition-all ${
                 open ? "border-lime/30 bg-lime/10 text-lime hover:bg-lime/15" : "border-line bg-raised text-dim hover:border-lime/30 hover:text-ink"
               }`}
             >
@@ -104,7 +107,7 @@ export function LessonTrack({
     <ol className="relative mt-4">
       <span
         aria-hidden
-        className="absolute bottom-6 left-[21px] top-6 w-0.5 bg-gradient-to-b from-line via-line to-transparent"
+        className="absolute bottom-6 left-[21px] top-6 w-0.5 bg-gradient-to-b from-lime/20 via-line to-transparent"
       />
       {lessons.map((l, i) => {
         const p = g.progress[l.id];
@@ -116,29 +119,29 @@ export function LessonTrack({
 
         const node =
           isDone
-            ? "border-lime/50 bg-lime text-lime-ink"
+            ? "border-lime/50 bg-lime text-lime-ink shadow-[0_12px_24px_-20px_rgba(200,243,34,0.9)]"
             : active
               ? "border-lime bg-lime text-lime-ink glow-lime"
               : open
-                ? "border-lime/30 bg-raised text-lime"
+                ? "border-lime/30 bg-lime/10 text-lime shadow-[0_10px_18px_-16px_rgba(200,243,34,0.7)]"
                 : "border-line bg-surface text-faint";
 
         const card =
           isDone
-            ? "border-lime/25 bg-lime/[0.04]"
+            ? "border-lime/20 bg-lime/[0.04]"
             : active
-              ? "border-lime/50 bg-gradient-to-r from-lime/[0.09] to-surface"
+              ? "border-lime/50 bg-gradient-to-r from-lime/[0.08] via-surface to-surface"
               : open
-                ? "border-line bg-surface group-hover:border-lime/35 group-hover:bg-raised/60"
-                : "border-line/70 bg-surface/50";
+                ? "border-line bg-surface group-hover:border-lime/35 group-hover:bg-raised/70"
+                : "border-line/80 bg-surface/50";
 
         const body = (
           <>
-            <span className={`relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 transition-transform ${node} ${open ? "group-hover:scale-105" : ""}`}>
+            <span className={`relative z-10 grid h-11 w-11 shrink-0 place-items-center rounded-2xl border-2 transition-all ${node} ${open ? "group-hover:scale-105" : ""}`}>
               {!open ? <Lock size={18} aria-hidden /> : isDone ? <Check size={20} strokeWidth={3} aria-hidden /> : <Icon name={l.icon} size={20} aria-hidden />}
             </span>
 
-            <span className={`relative flex min-w-0 flex-1 items-center gap-3 rounded-2xl border px-3.5 py-3 transition-all ${card}`}>
+            <span className={`relative flex min-w-0 flex-1 items-center gap-3 rounded-2xl border px-3.5 py-3 transition-all hover-lift ${card}`}>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-faint">

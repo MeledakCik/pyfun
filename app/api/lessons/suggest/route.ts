@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { BONUS_CATALOG } from "@/lib/bonus";
 import { BUNDLED } from "@/lib/lessons";
 import { bodyTooLarge } from "@/lib/rate-limit";
+import { validLessonId } from "@/lib/sanitize";
+import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 
@@ -29,6 +31,9 @@ const json = (body: unknown, status = 200) =>
  * endpoint ini murah dan tidak menambah kuota generate.
  */
 export async function POST(req: Request) {
+  if (!isSameOrigin(req)) {
+    return json({ error: CROSS_ORIGIN_ERROR }, 403);
+  }
   if (bodyTooLarge(req, MAX_BODY)) {
     return json({ error: "Body permintaan terlalu besar." }, 413);
   }
@@ -56,7 +61,9 @@ export async function POST(req: Request) {
     if (typeof id !== "string") {
       return json({ error: "completedIds hanya boleh berisi string." }, 400);
     }
-    const clean = id.replace(/\p{Cc}/gu, "").trim().slice(0, 80);
+    // Hanya ID materi yang bentuknya sah yang boleh memengaruhi saran.
+    if (!validLessonId(id)) continue;
+    const clean = id.trim();
     if (clean) completed.add(clean);
   }
 
