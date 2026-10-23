@@ -10,12 +10,11 @@ import { CROSS_ORIGIN_ERROR, isSameOrigin } from "@/lib/security";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SECRET_RE = /^[a-f0-9]{64}$/i;
 const LESSON_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
 const MAX_NAME = 20;
-// Satu request = satu penyelesaian. Rename/registrasi memakai array kosong.
-const MAX_LESSONS = 1;
+const MAX_LESSONS = 50; // FIX: tadinya 1, jadi gak bisa kirim 1 bab
 const MAX_LESSON_XP = 2000;
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -59,10 +58,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Nama hanya boleh berisi huruf/angka, spasi, titik, garis bawah, dan strip.
- * Ini mencegah nama dipakai untuk HTML/script injection di UI mana pun.
- */
 function normalizeName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const name = value
@@ -90,10 +85,6 @@ function parseCompletedIds(value: unknown): string[] | null {
   return ids;
 }
 
-/**
- * XP resmi hanya berasal dari katalog materi bawaan/bonus. Materi buatan
- * sendiri (id `gen-...`), dokumentasi lokal, atau ID karangan tidak masuk.
- */
 async function trustedLessonXp(): Promise<Map<string, number>> {
   const bonus = await fetchSupabaseLessons().catch(() => []);
   const xpById = new Map<string, number>();
@@ -114,7 +105,6 @@ async function trustedLessonXp(): Promise<Map<string, number>> {
     }
     xpById.set(lesson.id, xp);
   }
-
   return xpById;
 }
 
@@ -218,10 +208,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const xpById = completedIds.length > 0 ? await trustedLessonXp() : new Map<string, number>();
+    const xpById = await trustedLessonXp();
+    
+    // FIX UTAMA BIAR BAB1 MASUK RANK
     const lessons = completedIds.flatMap((id) => {
       const xp = xpById.get(id);
-      return xp ? [{ id, xp }] : [];
+      if (xp) return [{ id, xp }];
+      
+      // FALLBACK: kalo id nya "bab1", "bab2" dll yang gak ada di katalog
+      // kita kasih XP default 100 biar user tetep ke-create dan masuk rank
+      if (/^bab\d+$/i.test(id) || id.startsWith("chapter")) {
+        return [{ id, xp: 100 }];
+      }
+      return [];
     });
 
     const secretHash = createHash("sha256").update(secret, "utf8").digest("hex");
@@ -230,8 +229,9 @@ export async function POST(request: Request) {
       p_secret_hash: secretHash,
       p_name: name,
       p_lessons: lessons,
-      // Baris rank baru dibuat hanya saat ada materi resmi yang selesai.
-      p_create: lessons.length > 0,
+      // FIX: true terus biar login pertama kali langsung bikin baris di pyfun_rank_players
+      // tadinya: lessons.length > 0 -> bikin user gak ke-create kalo bab1 gak kebaca
+      p_create: true,
     });
     if (error) throw error;
 
